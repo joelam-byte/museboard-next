@@ -35,8 +35,11 @@ jobs:
             node: 24.x
           - os: windows-latest
             node: 22.x
+          # Node 24.16+ has a confirmed libuv fs.watch abort on Windows Server 2025:
+          # https://github.com/nodejs/node/issues/63638
+          # Keep the Windows Node 24 baseline on the last unaffected release.
           - os: windows-latest
-            node: 24.x
+            node: 24.15.0
 
     steps:
       - name: Check out repository
@@ -66,21 +69,21 @@ jobs:
         run: npm run validate:contracts
 
       - name: Run visual smoke checks
-        if: matrix.node == '24.x'
+        if: startsWith(matrix.node, '24.')
         run: npm run smoke:visual
 
       - name: Run Windows visual regression checks
-        if: runner.os == 'Windows' && matrix.node == '24.x'
+        if: runner.os == 'Windows' && startsWith(matrix.node, '24.')
         run: npm run visual:regression
 
       - name: Verify release metadata
-        if: matrix.node == '24.x'
+        if: startsWith(matrix.node, '24.')
         run: npm run verify:release
 
       - name: Verify release package
-        if: matrix.node == '24.x'
+        if: startsWith(matrix.node, '24.')
         run: node scripts/build-release.mjs --output-dir dist/release-ci
 
       - name: Smoke test installed release package
-        if: matrix.node == '24.x'
+        if: startsWith(matrix.node, '24.')
         run: node scripts/verify-release-archive.mjs dist/release-ci

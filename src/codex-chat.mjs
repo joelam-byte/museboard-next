@@ -13,7 +13,7 @@ const activeChatOperations = new Set();
 
 export async function sendImageToBoundChat({ projectDir, threadId, imagePath, prompt, waitForCompletion = false }) {
   if (!threadId) {
-    const error = new Error("Codex-Canvas is not bound to a Codex thread.");
+    const error = new Error("Museboard is not bound to a Codex thread.");
     error.statusCode = 409;
     throw error;
   }
@@ -30,7 +30,7 @@ export async function sendImageToBoundChat({ projectDir, threadId, imagePath, pr
     input: [
       {
         type: "text",
-        text: prompt || "Use this selected Codex-Canvas image as context.",
+        text: prompt || "Use this selected Museboard image as context.",
         text_elements: []
       },
       {
@@ -43,7 +43,7 @@ export async function sendImageToBoundChat({ projectDir, threadId, imagePath, pr
 
 export async function sendMentionToBoundChat({ projectDir, threadId, filePath, prompt, includeImage = false }) {
   if (!threadId) {
-    const error = new Error("Codex-Canvas is not bound to a Codex thread.");
+    const error = new Error("Museboard is not bound to a Codex thread.");
     error.statusCode = 409;
     throw error;
   }
@@ -55,7 +55,7 @@ export async function sendMentionToBoundChat({ projectDir, threadId, filePath, p
   const input = [
     {
       type: "text",
-      text: prompt || "Mention this Codex-Canvas file as context and wait for the next instruction.",
+      text: prompt || "Mention this Museboard file as context and wait for the next instruction.",
       text_elements: []
     },
     {
@@ -93,7 +93,7 @@ async function sendInputsToBoundChat({ projectDir, threadId, input, waitForCompl
   try {
     await client.open();
     await client.request("initialize", {
-      clientInfo: { name: "codex-canvas", version: APP_VERSION },
+      clientInfo: { name: "museboard", version: APP_VERSION },
       capabilities: null
     });
     await client.request("thread/resume", {

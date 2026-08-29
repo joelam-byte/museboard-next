@@ -279,7 +279,7 @@ async function handleRequest(request, response, context) {
     const body = await readJson(request, context.registry);
     const threadId = normalizeThreadId(body.threadId);
     if (!threadId) {
-      const error = new Error("A Codex threadId is required to bind Codex-Canvas to chat.");
+      const error = new Error("A Codex threadId is required to bind Museboard to chat.");
       error.statusCode = 400;
       throw error;
     }
@@ -417,7 +417,7 @@ function sendJson(response, status, body) {
 
 function requireLocalUpdateRequest(request, registry) {
   if (!isLoopbackHost(registry.host)) {
-    const error = new Error("Plugin updates are only available from a loopback Codex-Canvas server.");
+    const error = new Error("Plugin updates are only available from a loopback Museboard server.");
     error.statusCode = 403;
     throw error;
   }
@@ -446,7 +446,7 @@ function requireLocalUpdateRequest(request, registry) {
 
 function serverInfoFor(registry) {
   return {
-    name: "codex-canvas",
+    name: "museboard",
     protocolVersion: 1,
     version: APP_VERSION,
     pid: registry.pid,
@@ -464,7 +464,7 @@ function requireExpectedServerInstance(body, registry) {
 
 async function runMaintenanceSensitiveOperation(registry, operation) {
   if (registry.maintenanceReason) {
-    const error = new Error("Codex-Canvas is preparing to restart; no new background operation can start.");
+    const error = new Error("Museboard is preparing to restart; no new background operation can start.");
     error.statusCode = 409;
     throw error;
   }
@@ -482,7 +482,7 @@ async function runMaintenanceSensitiveOperation(registry, operation) {
 
 async function beginServerMaintenance(registry, reason) {
   if (registry.maintenanceReason) {
-    const error = new Error(`Codex-Canvas is already preparing to ${registry.maintenanceReason}.`);
+    const error = new Error(`Museboard is already preparing to ${registry.maintenanceReason}.`);
     error.statusCode = 409;
     throw error;
   }
@@ -495,7 +495,7 @@ async function beginServerMaintenance(registry, reason) {
   }
   if (registry.hasActiveJobs() || hasActiveChatOperations()) {
     endServerMaintenance(registry);
-    const error = new Error("Wait for running Codex-Canvas image, text, and chat operations to finish before updating or closing the server.");
+    const error = new Error("Wait for running Museboard image, text, and chat operations to finish before updating or closing the server.");
     error.statusCode = 409;
     throw error;
   }
@@ -526,7 +526,7 @@ function sendBinary(response, status, buffer, headers = {}) {
 }
 
 function headerSafeFilename(filename) {
-  return String(filename || "codex-canvas-layers.psd").replace(/["\\\r\n]/g, "_");
+  return String(filename || "museboard-layers.psd").replace(/["\\\r\n]/g, "_");
 }
 
 function parsePositiveIntegerQueryParam(searchParams, name, defaultValue, fallbackName = null) {
@@ -659,7 +659,7 @@ async function restorePersistedProjects(registry) {
       canvasId: entry.canvasId || null,
       registeredAt: typeof entry.registeredAt === "string" ? entry.registeredAt : null
     }).catch((error) => {
-      console.error(`Codex-Canvas skipped persisted project ${entry.projectDir}: ${error.message}`);
+      console.error(`Museboard skipped persisted project ${entry.projectDir}: ${error.message}`);
     });
   }
   for (const alias of aliases) {
@@ -680,7 +680,7 @@ async function readPersistedRegistry(registryPath) {
     };
   } catch (error) {
     if (error?.code === "ENOENT" || error?.code === "ENOTDIR") return { projects: [], aliases: [] };
-    console.error(`Codex-Canvas could not read project registry ${registryPath}: ${error.message}`);
+    console.error(`Museboard could not read project registry ${registryPath}: ${error.message}`);
     return { projects: [], aliases: [] };
   }
 }
@@ -715,7 +715,7 @@ async function persistProjectRegistrySafely(registry) {
   try {
     await persistProjectRegistry(registry);
   } catch (error) {
-    console.error(`Codex-Canvas could not write project registry ${registry.persistentRegistryPath}: ${error.message}`);
+    console.error(`Museboard could not write project registry ${registry.persistentRegistryPath}: ${error.message}`);
   }
 }
 
@@ -734,7 +734,7 @@ function startAutoCollector(project, registry) {
   const intervalMs = registry.autoCollectIntervalMs || 5000;
   project.collectorTimer = setInterval(() => {
     runAutoCollectorPass(project, registry).catch((error) => {
-      console.error(`Codex-Canvas auto-collect failed for ${project.projectDir}: ${error.message}`);
+      console.error(`Museboard auto-collect failed for ${project.projectDir}: ${error.message}`);
     });
   }, intervalMs);
   project.collectorTimer.unref?.();
@@ -770,7 +770,7 @@ function scheduleAutoCollectorPass(project, registry, debounceMs = 250) {
   project.collectorWatchDebounceTimer = setTimeout(() => {
     project.collectorWatchDebounceTimer = null;
     runAutoCollectorPass(project, registry).catch((error) => {
-      console.error(`Codex-Canvas auto-collect watcher failed for ${project.projectDir}: ${error.message}`);
+      console.error(`Museboard auto-collect watcher failed for ${project.projectDir}: ${error.message}`);
     });
   }, Math.max(25, debounceMs));
   project.collectorWatchDebounceTimer.unref?.();
@@ -805,7 +805,7 @@ async function runAutoCollectorPass(project, registry) {
     await collectRecentImages(project.projectDir, {
       sinceMs: project.collectSinceMs,
       limit: 10,
-      prompt: "Auto-collected while Codex-Canvas was open",
+      prompt: "Auto-collected while Museboard was open",
       excludePaths: getIgnoredGeneratedImagePaths(jobScopeFor(project)),
       canvasId: project.canvasId,
       threadId: project.chatThreadId,
@@ -879,7 +879,7 @@ async function sendObjectToBoundChat(projectDir, project, body = {}) {
   }
   const threadId = normalizeThreadId(project.chatThreadId);
   if (!threadId) {
-    const error = new Error("Codex-Canvas is not bound to a Codex thread.");
+    const error = new Error("Museboard is not bound to a Codex thread.");
     error.statusCode = 409;
     throw error;
   }
@@ -915,11 +915,11 @@ async function sendObjectToBoundChat(projectDir, project, body = {}) {
 }
 
 function sendToChatPrompt() {
-  return "Use this selected Codex-Canvas image as context.";
+  return "Use this selected Museboard image as context.";
 }
 
 function mentionFilePrompt(object) {
-  return `Codex-Canvas mentioned @${object.name || "selected-image"} as a file context. Do not analyze or edit it yet. Reply only that the file is available and wait for the next instruction.`;
+  return `Museboard mentioned @${object.name || "selected-image"} as a file context. Do not analyze or edit it yet. Reply only that the file is available and wait for the next instruction.`;
 }
 
 async function bindProjectToThread(registry, project, threadId) {
@@ -979,7 +979,7 @@ async function writeProjectRuntime(registry, project) {
     `${JSON.stringify({
       url: projectUrl(registry, project.id),
       pid: registry.pid,
-      serverName: "codex-canvas",
+      serverName: "museboard",
       serverProtocolVersion: 1,
       serverVersion: APP_VERSION,
       serverInstanceId: registry.instanceId,

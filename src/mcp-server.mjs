@@ -44,7 +44,7 @@ async function handle(method, params) {
     return {
       protocolVersion: params.protocolVersion || "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "codex-canvas", version: APP_VERSION }
+      serverInfo: { name: "museboard", version: APP_VERSION }
     };
   }
 
@@ -53,7 +53,7 @@ async function handle(method, params) {
       tools: [
         {
           name: "open_canvas",
-          description: "Start the Codex-Canvas local server and return the browser URL.",
+          description: "Start the Museboard local server and return the browser URL.",
           inputSchema: {
             type: "object",
             required: ["projectDir"],
@@ -84,26 +84,26 @@ async function handle(method, params) {
               prompt: { type: "string" },
               imagegenPrompt: { type: "string", description: "Full prompt sent to the image generation runner, when available." },
               threadId: { type: "string", description: "Codex thread id whose canvas should receive the image. Pass this explicitly for thread-scoped canvases; omitted means the default project canvas." },
-              canvasId: { type: "string", description: "Explicit Codex-Canvas canvas id. Overrides the canvas id derived from threadId." }
+              canvasId: { type: "string", description: "Explicit Museboard canvas id. Overrides the canvas id derived from threadId." }
             }
           }
         },
         {
           name: "canvas_status",
-          description: "Read Codex-Canvas state for the active project.",
+          description: "Read Museboard state for the active project.",
           inputSchema: {
             type: "object",
             required: ["projectDir"],
             properties: {
               projectDir: { type: "string", description: "Absolute path to the active Codex project." },
               threadId: { type: "string", description: "Codex thread id whose canvas status should be read. Pass this explicitly for thread-scoped canvases; omitted means the default project canvas." },
-              canvasId: { type: "string", description: "Explicit Codex-Canvas canvas id. Overrides the canvas id derived from threadId." }
+              canvasId: { type: "string", description: "Explicit Museboard canvas id. Overrides the canvas id derived from threadId." }
             }
           }
         },
         {
           name: "search_canvas",
-          description: "Search Codex-Canvas objects by name, prompt, text, source path, or layer metadata.",
+          description: "Search Museboard objects by name, prompt, text, source path, or layer metadata.",
           inputSchema: {
             type: "object",
             required: ["projectDir"],
@@ -113,13 +113,13 @@ async function handle(method, params) {
               type: { type: "string", enum: ["image", "text", "drawing", "annotation", "job"], description: "Optional canvas object type filter." },
               limit: { type: "number", description: "Maximum number of results. Defaults to 20, capped at 100." },
               threadId: { type: "string", description: "Codex thread id whose canvas should be searched. Pass explicitly for thread-scoped canvases; omitted means the default project canvas." },
-              canvasId: { type: "string", description: "Explicit Codex-Canvas canvas id. Overrides the canvas id derived from threadId." }
+              canvasId: { type: "string", description: "Explicit Museboard canvas id. Overrides the canvas id derived from threadId." }
             }
           }
         },
         {
           name: "prompt_history",
-          description: "List recent unique prompts used by Codex-Canvas objects.",
+          description: "List recent unique prompts used by Museboard objects.",
           inputSchema: {
             type: "object",
             required: ["projectDir"],
@@ -128,13 +128,13 @@ async function handle(method, params) {
               query: { type: "string", description: "Optional text to filter prompts." },
               limit: { type: "number", description: "Maximum number of prompts. Defaults to 20, capped at 100." },
               threadId: { type: "string", description: "Codex thread id whose canvas prompt history should be read. Pass explicitly for thread-scoped canvases; omitted means the default project canvas." },
-              canvasId: { type: "string", description: "Explicit Codex-Canvas canvas id. Overrides the canvas id derived from threadId." }
+              canvasId: { type: "string", description: "Explicit Museboard canvas id. Overrides the canvas id derived from threadId." }
             }
           }
         },
         {
           name: "version_groups",
-          description: "Group Codex-Canvas object version history by sourceObjectId, batchId, layoutMode, or prompt.",
+          description: "Group Museboard object version history by sourceObjectId, batchId, layoutMode, or prompt.",
           inputSchema: {
             type: "object",
             required: ["projectDir"],
@@ -145,7 +145,7 @@ async function handle(method, params) {
               limit: { type: "number", description: "Maximum number of groups. Defaults to 20, capped at 100." },
               objectLimit: { type: "number", description: "Maximum number of objects returned per group. Defaults to 20, capped at 100." },
               threadId: { type: "string", description: "Codex thread id whose canvas version groups should be read. Pass explicitly for thread-scoped canvases; omitted means the default project canvas." },
-              canvasId: { type: "string", description: "Explicit Codex-Canvas canvas id. Overrides the canvas id derived from threadId." }
+              canvasId: { type: "string", description: "Explicit Museboard canvas id. Overrides the canvas id derived from threadId." }
             }
           }
         },
@@ -167,7 +167,7 @@ async function handle(method, params) {
                 description: "When collecting an image generated from a selected canvas object, place results in a row to the right of that source object."
               },
               threadId: { type: "string", description: "Codex thread id whose generated_images directory and canvas should be used. Pass explicitly for thread-scoped collection; omitted collection is a no-op unless roots are provided." },
-              canvasId: { type: "string", description: "Explicit Codex-Canvas canvas id. Overrides the canvas id derived from threadId." },
+              canvasId: { type: "string", description: "Explicit Museboard canvas id. Overrides the canvas id derived from threadId." },
               sinceMinutes: { type: "number", description: "Only import images modified in the last N minutes. Defaults to 120." },
               limit: { type: "number", description: "Maximum number of images to import. Defaults to 20." },
               prompt: { type: "string" }
@@ -176,7 +176,7 @@ async function handle(method, params) {
         },
         {
           name: "start_image_job",
-          description: "Start an Codex-Canvas background image action for a selected canvas image using a stable action id.",
+          description: "Start a Museboard background image action for a selected canvas image using a stable action id.",
           inputSchema: {
             type: "object",
             required: ["projectDir", "objectId", "action"],
@@ -186,17 +186,17 @@ async function handle(method, params) {
               action: {
                 type: "string",
                 enum: ["quick-edit", "remove-bg", "expand", "edit-elements"],
-                description: "Stable Codex-Canvas action id."
+                description: "Stable Museboard action id."
               },
               prompt: { type: "string", description: "Optional user guidance for quick-edit or expand." },
               threadId: { type: "string", description: "Codex thread id whose canvas owns the selected object. Pass explicitly for thread-scoped canvases." },
-              canvasId: { type: "string", description: "Explicit Codex-Canvas canvas id. Overrides the canvas id derived from threadId." }
+              canvasId: { type: "string", description: "Explicit Museboard canvas id. Overrides the canvas id derived from threadId." }
             }
           }
         },
         {
           name: "send_to_chat",
-          description: "Send a selected Codex-Canvas image to the explicitly bound Codex thread.",
+          description: "Send a selected Museboard image to the explicitly bound Codex thread.",
           inputSchema: {
             type: "object",
             required: ["projectDir", "objectId", "action"],
@@ -205,11 +205,11 @@ async function handle(method, params) {
               action: {
                 type: "string",
                 enum: ["send-to-chat", "mention-file"],
-                description: "Stable Codex-Canvas chat action id. send-to-chat sends visual input; mention-file sends a Codex @file-style mention."
+                description: "Stable Museboard chat action id. send-to-chat sends visual input; mention-file sends a Codex @file-style mention."
               },
               objectId: { type: "string", description: "Canvas image object id to send." },
               threadId: { type: "string", description: "Codex thread id to receive the selected image. Defaults to the current Codex thread when available." },
-              canvasId: { type: "string", description: "Explicit Codex-Canvas canvas id. Overrides the canvas id derived from threadId." },
+              canvasId: { type: "string", description: "Explicit Museboard canvas id. Overrides the canvas id derived from threadId." },
               includeImage: { type: "boolean", description: "For mention-file only, also attach the local image visual input in the same turn." }
             }
           }
@@ -222,7 +222,7 @@ async function handle(method, params) {
     const args = params.arguments || {};
     if (params.name === "open_canvas") {
       const projectDir = requireProjectDir(args);
-      const entrypoint = path.join(pluginRoot, "bin", "codex-canvas.mjs");
+      const entrypoint = path.join(pluginRoot, "bin", "museboard.mjs");
       const cliArgs = ["open", "--project", projectDir, "--port", String(normalizePort(args.port))];
       if (args.threadId) cliArgs.push("--thread-id", args.threadId);
       const output = await captureConsole(() => cliMain(
@@ -230,7 +230,7 @@ async function handle(method, params) {
         { entrypoint }
       ));
       const url = output.trim().split(/\s+/).pop();
-      return textResult(`Codex-Canvas is available: [Open Codex-Canvas](${url})`, { url, projectDir, threadId: normalizeThreadId(args.threadId) || environmentThreadId() });
+      return textResult(`Museboard is available: [Open Museboard](${url})`, { url, projectDir, threadId: normalizeThreadId(args.threadId) || environmentThreadId() });
     }
 
     if (params.name === "add_image") {
@@ -238,14 +238,14 @@ async function handle(method, params) {
       requireSingleImageInput(args);
       const canvas = await resolveCanvasOptions(projectDir, args);
       const object = await addImage(projectDir, args, { canvasId: canvas.canvasId });
-      return textResult(`Added image to Codex-Canvas: ${object.name}`, object);
+      return textResult(`Added image to Museboard: ${object.name}`, object);
     }
 
     if (params.name === "canvas_status") {
       const projectDir = requireProjectDir(args);
       const canvas = await resolveCanvasOptions(projectDir, args);
       const state = await readState(projectDir, { canvasId: canvas.canvasId });
-      return textResult(`Codex-Canvas has ${state.objects.length} object(s).`, {
+      return textResult(`Museboard has ${state.objects.length} object(s).`, {
         projectDir,
         canvasId: canvas.canvasId,
         objects: state.objects.length,
@@ -265,7 +265,7 @@ async function handle(method, params) {
         limit: normalizeToolLimit(args.limit),
         canvasId: canvas.canvasId
       });
-      return textResult(`Found ${result.total} Codex-Canvas object(s).`, result);
+      return textResult(`Found ${result.total} Museboard object(s).`, result);
     }
 
     if (params.name === "prompt_history") {
@@ -276,7 +276,7 @@ async function handle(method, params) {
         limit: normalizeToolLimit(args.limit),
         canvasId: canvas.canvasId
       });
-      return textResult(`Found ${result.total} Codex-Canvas prompt(s).`, result);
+      return textResult(`Found ${result.total} Museboard prompt(s).`, result);
     }
 
     if (params.name === "version_groups") {
@@ -289,7 +289,7 @@ async function handle(method, params) {
         objectLimit: normalizeToolLimit(args.objectLimit),
         canvasId: canvas.canvasId
       });
-      return textResult(`Found ${result.total} Codex-Canvas version group(s).`, result);
+      return textResult(`Found ${result.total} Museboard version group(s).`, result);
     }
 
     if (params.name === "collect_recent_images") {
@@ -304,7 +304,7 @@ async function handle(method, params) {
         canvasId: canvas.canvasId,
         threadId: canvas.threadId
       });
-      return textResult(`Collected ${result.imported.length} recent image(s) into Codex-Canvas.`, result);
+      return textResult(`Collected ${result.imported.length} recent image(s) into Museboard.`, result);
     }
 
     if (params.name === "start_image_job") {
@@ -315,7 +315,7 @@ async function handle(method, params) {
         action: args.action,
         prompt: args.prompt || ""
       }, { canvasId: canvas.canvasId });
-      return textResult(`Started ${args.action} for Codex-Canvas object ${args.objectId}.`, job);
+      return textResult(`Started ${args.action} for Museboard object ${args.objectId}.`, job);
     }
 
     if (params.name === "send_to_chat") {
@@ -340,16 +340,16 @@ async function handle(method, params) {
           projectDir,
           threadId: canvas.threadId,
           filePath: imagePath,
-          prompt: `Codex-Canvas mentioned @${object.name || "selected-image"} as a file context. Do not analyze or edit it yet. Reply only that the file is available and wait for the next instruction.`,
+          prompt: `Museboard mentioned @${object.name || "selected-image"} as a file context. Do not analyze or edit it yet. Reply only that the file is available and wait for the next instruction.`,
           includeImage: args.includeImage === true
         })
         : await sendImageToBoundChat({
           projectDir,
           threadId: canvas.threadId,
           imagePath,
-          prompt: "Use this selected Codex-Canvas image as context."
+          prompt: "Use this selected Museboard image as context."
         });
-      return textResult(`Sent Codex-Canvas object ${object.id} to Codex thread ${canvas.threadId}.`, {
+      return textResult(`Sent Museboard object ${object.id} to Codex thread ${canvas.threadId}.`, {
         ...result,
         action: args.action,
         objectId: object.id,

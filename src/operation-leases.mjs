@@ -111,7 +111,7 @@ function processIsAlive(pid) {
 }
 
 function updateInProgressError() {
-  const error = new Error("Codex-Canvas is installing an update; wait for it to finish before starting another background operation.");
+  const error = new Error("Museboard is installing an update; wait for it to finish before starting another background operation.");
   error.statusCode = 409;
   error.code = "update-in-progress";
   return error;

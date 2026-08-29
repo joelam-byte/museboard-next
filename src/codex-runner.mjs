@@ -150,7 +150,7 @@ function summarizeCodexFailure(log) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .filter((line) => !line.startsWith("[codex-canvas]"))
+    .filter((line) => !line.startsWith("[museboard]") && !line.startsWith("[codex-canvas]"))
     .filter((line) => !/^Reading additional input from stdin/i.test(line));
   const detail = lines.at(-1);
   if (!detail) return "";
@@ -204,7 +204,7 @@ function transparentLayerChromaInstructions() {
     "The source image is a transparent layer. The edited content may have a different silhouette than the source.",
     "Render the edited layer on a perfectly flat solid #ff00ff chroma-key background, not on white, checkerboard, gray, transparent-preview, or scene background.",
     "Do not use #ff00ff anywhere in the edited layer content.",
-    "Codex-Canvas will remove the chroma-key background locally and create the final alpha channel after generation."
+    "Museboard will remove the chroma-key background locally and create the final alpha channel after generation."
   ].join("\n");
 }
 
@@ -236,7 +236,7 @@ function promptForAction({ action, outputDir, userPrompt, transparentLayerMode =
     const textInventoryPath = path.join(outputDir, "recognized-text.json");
     const editPlanPath = path.join(outputDir, "edit-plan.json");
     return [
-      "Use the canvas-edit-text skill and the imagegen skill for an Codex-Canvas Edit Text session.",
+      "Use the canvas-edit-text skill and the imagegen skill for a Museboard Edit Text session.",
       "This is an interactive background session coordinated through files. Do not exit after recognition.",
       "Optimize for latency: do not inspect unrelated repository files and do not run broad filesystem searches.",
       "",
@@ -357,7 +357,7 @@ function promptForAction({ action, outputDir, userPrompt, transparentLayerMode =
       "Use a descriptive filename ending in .png, such as edit-elements-segmentation.png.",
       "As soon as the generated PNG exists, copy it into the output directory and finish.",
       "Do not modify source files outside that output directory.",
-      "Do not ask follow-up questions. Do not run the local splitting algorithm yourself; Codex-Canvas will do that after collection.",
+      "Do not ask follow-up questions. Do not run the local splitting algorithm yourself; Museboard will do that after collection.",
       "",
       "Finish with a concise message containing the saved segmentation map path."
     ].join("\n");
@@ -365,7 +365,7 @@ function promptForAction({ action, outputDir, userPrompt, transparentLayerMode =
 
   if (action === "edit-elements-background") {
     return [
-      "Use the canvas-edit-elements skill and the imagegen skill to complete an Codex-Canvas Edit Elements background layer.",
+      "Use the canvas-edit-elements skill and the imagegen skill to complete a Museboard Edit Elements background layer.",
       "Optimize for latency: do not inspect unrelated repository files, do not produce variants, and do not run broad filesystem searches before generation.",
       "",
       "Attached image 1 is the original source image.",
@@ -382,7 +382,7 @@ function promptForAction({ action, outputDir, userPrompt, transparentLayerMode =
       "Use a descriptive filename ending in .png, such as edit-elements-background-completed.png.",
       "As soon as the generated PNG exists, copy it into the output directory and finish.",
       "Do not modify source files outside that output directory.",
-      "Do not ask follow-up questions. Do not run the local splitting algorithm yourself; Codex-Canvas will integrate the completed background after collection.",
+      "Do not ask follow-up questions. Do not run the local splitting algorithm yourself; Museboard will integrate the completed background after collection.",
       "",
       "Finish with a concise message containing the saved completed background path."
     ].join("\n");
@@ -403,7 +403,7 @@ function promptForAction({ action, outputDir, userPrompt, transparentLayerMode =
     "Generate the foreground subject on a perfectly flat solid #ff00ff chroma-key background.",
     "The background must be one uniform #ff00ff color with no shadows, gradients, texture, reflections, floor plane, or lighting variation.",
     "Do not use #ff00ff anywhere in the subject. Keep the subject fully separated from the background with crisp edges, no cast shadow, no contact shadow, no reflection, and generous padding.",
-    "Codex-Canvas will remove the chroma key locally and verify the final PNG alpha channel before collecting it.",
+    "Museboard will remove the chroma key locally and verify the final PNG alpha channel before collecting it.",
     "",
     `Save or copy the final image into this exact directory: ${outputDir}`,
     "Use a descriptive filename ending in .png, such as remove-bg-chroma-source.png.",

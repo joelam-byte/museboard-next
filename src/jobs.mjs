@@ -346,7 +346,7 @@ async function runJob(projectDir, job, startedAtMs) {
   job.status = "running";
   job.startedAt = new Date().toISOString();
   await fs.mkdir(job.outputDir, { recursive: true });
-  await appendJobLog(job, `Codex-Canvas job started: ${job.action}`);
+  await appendJobLog(job, `Museboard job started: ${job.action}`);
   const codexInput = await prepareCodexInputForJob(job);
 
   const codexJob = await startCodexImageJob({
@@ -395,7 +395,7 @@ async function runTextRecognitionJob(projectDir, job, startedAtMs) {
   job.stage = "recognizing";
   job.startedAt = new Date().toISOString();
   await fs.mkdir(job.outputDir, { recursive: true });
-  await appendJobLog(job, "Codex-Canvas edit text session started");
+  await appendJobLog(job, "Museboard edit text session started");
 
   const localOcr = await recognizeTextLocal(job.imagePath, { outputPath: job.textInventoryPath }).catch((error) => ({
     backend: "local-ocr",
@@ -789,7 +789,7 @@ function buildExpandPrompt(job) {
   return [
     instruction,
     "",
-    "The attached image is a padded outpaint input prepared by Codex-Canvas.",
+    "The attached image is a padded outpaint input prepared by Museboard.",
     "The original source image is pasted inside the padded canvas at the user-chosen position and must remain visually unchanged.",
     "Fill and complete the padded surrounding area so the final image becomes one coherent full-frame image.",
     "Do not leave blurred padding, blank margins, checkerboards, or artificial borders in the final output.",
@@ -817,7 +817,7 @@ function quickEditAnnotationSummary(annotations) {
   return [
     "",
     "",
-    "Codex-Canvas annotation/mask details:",
+    "Museboard annotation/mask details:",
     ...summaries.map((summary, index) => `${index + 1}. ${summary}`)
   ].join("\n");
 }
@@ -1880,7 +1880,7 @@ async function readJsonFile(filePath) {
 
 async function appendJobLog(job, message) {
   try {
-    await fs.appendFile(job.logPath, `[codex-canvas] ${new Date().toISOString()} ${message}\n`);
+    await fs.appendFile(job.logPath, `[museboard] ${new Date().toISOString()} ${message}\n`);
   } catch {
     // Logging should not affect image job completion.
   }

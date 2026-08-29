@@ -8,7 +8,7 @@ async function main() {
   const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const homeDir = path.resolve(options.home || process.env.CODEX_CANVAS_PERSONAL_HOME || os.homedir());
   const manifest = JSON.parse(await fs.readFile(path.join(rootDir, ".codex-plugin", "plugin.json"), "utf8"));
-  const pluginName = manifest.name || "codex-canvas";
+  const pluginName = manifest.name || "museboard";
   const pluginVersion = manifest.version;
 
   if (!pluginVersion) {

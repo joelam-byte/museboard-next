@@ -193,9 +193,11 @@ async function sanitizeReleasePackageJson(stageDir) {
   const packageJson = await readJson(packagePath);
   for (const script of [
     "install:dev-cache",
+    "install:preview",
     "smoke",
     "smoke:visual",
     "visual:regression",
+    "validate:contracts",
     "verify:release",
     "verify:archive",
     "build:release",
@@ -245,7 +247,7 @@ function validatePackedFiles(files) {
     "package.json",
     ".codex-plugin/plugin.json",
     ".mcp.json",
-    "bin/codex-canvas.mjs",
+    "bin/museboard.mjs",
     "public/app.js",
     "public/canvas-history.js",
     "public/index.html",

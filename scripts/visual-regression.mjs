@@ -6,13 +6,18 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { addImage } from "../src/store.mjs";
 import { createServer as createAgentCanvasServer } from "../src/server.mjs";
+import { npmCliInvocation } from "./npm-cli.mjs";
+import { createFetchSafeTestServer } from "./test-server.mjs";
+import { countDirectionalPixelChanges } from "./visual-diff.mjs";
 
 const pngOne = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 const pngTwo = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFUlEQVR4nGO8Y6D6n4GBgYEJRIAwACHvAjSDKprFAAAAAElFTkSuQmCC";
 const baselineDir = path.join(process.cwd(), "scripts", "reference-screenshots");
 const updateBaselines = process.argv.includes("--update");
-const pixelThreshold = 0.012;
+const pixelThreshold = normalizePixelThreshold(process.env.CODEX_CANVAS_VISUAL_THRESHOLD);
+const visualDebugDir = readOptionValue(process.argv, "--debug-dir") || process.env.CODEX_CANVAS_VISUAL_DEBUG_DIR || "";
 const channelTolerance = 10;
+const renderingToleranceCssPixels = 2;
 const viewports = [
   { name: "desktop", width: 1280, height: 800, deviceScaleFactor: 1 },
   { name: "mobile", width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }
@@ -20,6 +25,25 @@ const viewports = [
 const screenshotCases = ["discovery", "selected", "expand", "crop", "compare", "overlay", "text-edit"];
 const caseFilter = String(process.env.CODEX_CANVAS_VISUAL_CASE || "").trim();
 let visualProjectRegistryPath = null;
+
+function normalizePixelThreshold(value) {
+  if (value === undefined || value === "") return 0.012;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    throw new Error("CODEX_CANVAS_VISUAL_THRESHOLD must be a number from 0 to 1.");
+  }
+  return parsed;
+}
+
+function readOptionValue(args, option) {
+  const index = args.indexOf(option);
+  if (index === -1) return "";
+  const value = args[index + 1];
+  if (!value || value.startsWith("--")) {
+    throw new Error(`${option} requires a value.`);
+  }
+  return value;
+}
 
 async function main() {
   const playwright = await loadPlaywright();
@@ -48,12 +72,15 @@ async function main() {
         }
 
         const baseline = await readBaseline(baselinePath, name);
-        const diff = await comparePngBuffers(browser, baseline, screenshot);
+        const pixelNeighborhoodRadius = Math.max(
+          1,
+          Math.round((viewport.deviceScaleFactor || 1) * renderingToleranceCssPixels)
+        );
+        const diff = await comparePngBuffers(browser, baseline, screenshot, pixelNeighborhoodRadius);
         if (diff.changedRatio > pixelThreshold) {
-          const debugDir = process.env.CODEX_CANVAS_VISUAL_DEBUG_DIR;
-          if (debugDir) {
-            await fsp.mkdir(debugDir, { recursive: true });
-            await fsp.writeFile(path.join(debugDir, `${name}-actual.png`), screenshot);
+          if (visualDebugDir) {
+            await fsp.mkdir(visualDebugDir, { recursive: true });
+            await fsp.writeFile(path.join(visualDebugDir, `${name}-actual.png`), screenshot);
           }
           const percent = (diff.changedRatio * 100).toFixed(2);
           throw new Error(`${name} visual regression exceeded ${(pixelThreshold * 100).toFixed(2)}% threshold: ${percent}% pixels changed`);
@@ -108,7 +135,8 @@ async function captureReferenceViewport(browser, viewport, screenshotCase) {
     viewport: { width: viewport.width, height: viewport.height },
     isMobile: Boolean(viewport.isMobile),
     hasTouch: Boolean(viewport.hasTouch),
-    deviceScaleFactor: viewport.deviceScaleFactor
+    deviceScaleFactor: viewport.deviceScaleFactor,
+    locale: "en-US"
   });
   const page = await context.newPage();
   try {
@@ -230,10 +258,10 @@ async function readBaseline(baselinePath, name) {
   }
 }
 
-async function comparePngBuffers(browser, baseline, current) {
+async function comparePngBuffers(browser, baseline, current, pixelNeighborhoodRadius) {
   const page = await browser.newPage();
   try {
-    return await page.evaluate(async ({ baselineDataUrl, currentDataUrl, channelTolerance }) => {
+    return await page.evaluate(async ({ baselineDataUrl, currentDataUrl, channelTolerance, pixelComparatorSource, pixelNeighborhoodRadius }) => {
       async function loadImage(dataUrl) {
         return new Promise((resolve, reject) => {
           const image = new Image();
@@ -259,22 +287,35 @@ async function comparePngBuffers(browser, baseline, current) {
       context.drawImage(currentImage, 0, 0);
       const currentPixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
 
-      let changed = 0;
       const total = baselinePixels.length / 4;
-      for (let index = 0; index < baselinePixels.length; index += 4) {
-        const delta = Math.max(
-          Math.abs(baselinePixels[index] - currentPixels[index]),
-          Math.abs(baselinePixels[index + 1] - currentPixels[index + 1]),
-          Math.abs(baselinePixels[index + 2] - currentPixels[index + 2]),
-          Math.abs(baselinePixels[index + 3] - currentPixels[index + 3])
-        );
-        if (delta > channelTolerance) changed += 1;
-      }
-      return { changedRatio: changed / total, dimensionsChanged: false };
+      // Run the same tested comparator in the browser where decoded RGBA buffers already live.
+      const countDirectionalChanges = Function(`"use strict"; return (${pixelComparatorSource});`)();
+      const currentToBaseline = countDirectionalChanges(
+        currentPixels,
+        baselinePixels,
+        canvas.width,
+        canvas.height,
+        channelTolerance,
+        pixelNeighborhoodRadius
+      );
+      const baselineToCurrent = countDirectionalChanges(
+        baselinePixels,
+        currentPixels,
+        canvas.width,
+        canvas.height,
+        channelTolerance,
+        pixelNeighborhoodRadius
+      );
+      return {
+        changedRatio: Math.max(currentToBaseline, baselineToCurrent) / total,
+        dimensionsChanged: false
+      };
     }, {
       baselineDataUrl: `data:image/png;base64,${baseline.toString("base64")}`,
       currentDataUrl: `data:image/png;base64,${current.toString("base64")}`,
-      channelTolerance
+      channelTolerance,
+      pixelComparatorSource: countDirectionalPixelChanges.toString(),
+      pixelNeighborhoodRadius
     });
   } finally {
     await page.close();
@@ -282,10 +323,11 @@ async function comparePngBuffers(browser, baseline, current) {
 }
 
 async function createServer(options = {}) {
-  return createAgentCanvasServer({
-    persistentRegistryPath: await persistentRegistryPathForVisualRegression(),
-    ...options
-  });
+  const persistentRegistryPath = await persistentRegistryPathForVisualRegression();
+  return createFetchSafeTestServer(
+    (serverOptions) => createAgentCanvasServer({ persistentRegistryPath, ...serverOptions }),
+    options
+  );
 }
 
 async function persistentRegistryPathForVisualRegression() {
@@ -298,17 +340,19 @@ async function persistentRegistryPathForVisualRegression() {
 
 async function runWithNpmPlaywright() {
   await new Promise((resolve, reject) => {
-    const child = spawn(npmCommand(), [
+    const npm = npmCliInvocation([
       "exec",
       "--yes",
       "--package",
       "playwright",
       "--",
-      process.execPath,
+      "node",
       path.join(process.cwd(), "scripts", "visual-regression.mjs"),
       "--runner",
-      ...(updateBaselines ? ["--update"] : [])
-    ], {
+      ...(updateBaselines ? ["--update"] : []),
+      ...(visualDebugDir ? ["--debug-dir", visualDebugDir] : [])
+    ]);
+    const child = spawn(npm.command, npm.args, {
       cwd: process.cwd(),
       env: process.env,
       stdio: "inherit",
@@ -336,7 +380,7 @@ async function launchChromium(playwright) {
 
 async function installPlaywrightChromium() {
   await new Promise((resolve, reject) => {
-    const child = spawn(npmCommand(), [
+    const npm = npmCliInvocation([
       "exec",
       "--yes",
       "--package",
@@ -345,7 +389,8 @@ async function installPlaywrightChromium() {
       "playwright",
       "install",
       "chromium"
-    ], {
+    ]);
+    const child = spawn(npm.command, npm.args, {
       cwd: process.cwd(),
       env: process.env,
       stdio: "inherit",
@@ -433,10 +478,6 @@ async function waitForVersionDiffHeatmap(page) {
   }, null, { timeout: 5000 }).catch((error) => {
     throw new Error(`version pixel-diff heatmap should render changed pixels: ${error.message}`);
   });
-}
-
-function npmCommand() {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
 }
 
 main().catch((error) => {

@@ -147,14 +147,14 @@ jobs:
         run: node scripts/build-release.mjs --output-dir dist/release
 
       - name: Smoke test installed release package
-        run: node scripts/verify-release-archive.mjs "dist/release/codex-canvas-$RELEASE_TAG.tgz"
+        run: node scripts/verify-release-archive.mjs "dist/release/museboard-$RELEASE_TAG.tgz"
 
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >-
           gh release upload "$RELEASE_TAG"
-          "dist/release/codex-canvas-${RELEASE_TAG}.tgz"
+          "dist/release/museboard-${RELEASE_TAG}.tgz"
           dist/release/release-manifest.json
           dist/release/SHA256SUMS
           --clobber

@@ -6,6 +6,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { addImage, updateObject } from "../src/store.mjs";
 import { createServer as createAgentCanvasServer } from "../src/server.mjs";
+import { npmCliInvocation } from "./npm-cli.mjs";
+import { createFetchSafeTestServer } from "./test-server.mjs";
 
 const pngOne = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 const pngTwo = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFUlEQVR4nGO8Y6D6n4GBgYEJRIAwACHvAjSDKprFAAAAAElFTkSuQmCC";
@@ -57,16 +59,17 @@ async function main() {
 
 async function runWithNpmPlaywright() {
   await new Promise((resolve, reject) => {
-    const child = spawn(npmCommand(), [
+    const npm = npmCliInvocation([
       "exec",
       "--yes",
       "--package",
       "playwright",
       "--",
-      process.execPath,
+      "node",
       path.join(process.cwd(), "scripts", "visual-smoke.mjs"),
       "--runner"
-    ], {
+    ]);
+    const child = spawn(npm.command, npm.args, {
       cwd: process.cwd(),
       env: process.env,
       stdio: "inherit",
@@ -81,10 +84,11 @@ async function runWithNpmPlaywright() {
 }
 
 async function createServer(options = {}) {
-  return createAgentCanvasServer({
-    persistentRegistryPath: await persistentRegistryPathForVisualSmoke(),
-    ...options
-  });
+  const persistentRegistryPath = await persistentRegistryPathForVisualSmoke();
+  return createFetchSafeTestServer(
+    (serverOptions) => createAgentCanvasServer({ persistentRegistryPath, ...serverOptions }),
+    options
+  );
 }
 
 async function persistentRegistryPathForVisualSmoke() {
@@ -109,7 +113,7 @@ async function launchChromium(playwright) {
 
 async function installPlaywrightChromium() {
   await new Promise((resolve, reject) => {
-    const child = spawn(npmCommand(), [
+    const npm = npmCliInvocation([
       "exec",
       "--yes",
       "--package",
@@ -118,7 +122,8 @@ async function installPlaywrightChromium() {
       "playwright",
       "install",
       "chromium"
-    ], {
+    ]);
+    const child = spawn(npm.command, npm.args, {
       cwd: process.cwd(),
       env: process.env,
       stdio: "inherit",
@@ -633,16 +638,32 @@ async function assertVersionDiffOverlay(page, versionIds) {
   for (const rect of snapshot.boxRects) {
     assertRectVisible(rect, "version annotation box");
   }
-  assert(snapshot.labelText.includes("Pixel diff"), "version annotation overlay should include a pixel diff label");
+  assert(
+    snapshot.labelText.includes("Pixel diff") || snapshot.labelText.includes("像素差异"),
+    "version annotation overlay should include its localized pixel diff label"
+  );
   assert(snapshot.selected.every(Boolean), "version annotation overlay should keep all compared versions selected");
 }
 
 async function waitForVersionDiffHeatmap(page) {
   await page.waitForFunction(() => {
-    return [...document.querySelectorAll(".version-diff-heatmap")]
-      .some((canvas) => !canvas.hidden && Number(canvas.dataset.changedPixels || 0) > 0);
+    const canvas = [...document.querySelectorAll(".version-diff-heatmap")]
+      .find((candidate) => !candidate.hidden && Number(candidate.dataset.changedPixels || 0) > 0);
+    if (!canvas) {
+      window.__museboardVisualHeatmapCandidate = null;
+      return false;
+    }
+    const tracked = window.__museboardVisualHeatmapCandidate;
+    if (!tracked || tracked.canvas !== canvas) {
+      window.__museboardVisualHeatmapCandidate = { canvas, since: performance.now() };
+      return false;
+    }
+    return canvas.isConnected && performance.now() - tracked.since >= 100;
   }, null, { timeout: 5000 }).catch((error) => {
     throw new Error(`version pixel-diff heatmap should render changed pixels: ${error.message}`);
+  });
+  await page.evaluate(() => {
+    window.__museboardVisualHeatmapCandidate = null;
   });
 }
 
@@ -971,12 +992,17 @@ async function runUpdateIndicatorSmoke(browser) {
       const style = getComputedStyle(button, "::after");
       return {
         ariaLabel: button.getAttribute("aria-label"),
+        statusText: document.querySelector("#appUpdateStatus")?.textContent || "",
         backgroundColor: style.backgroundColor,
         height: style.height,
         width: style.width
       };
     });
-    assert(indicator.ariaLabel?.includes("Available"), "update red dot should expose the available state to assistive technology");
+    assert(indicator.statusText.length > 0, "update red dot should have a localized available status");
+    assert(
+      indicator.ariaLabel?.includes(indicator.statusText),
+      "update red dot should expose its localized available state to assistive technology"
+    );
     assertEqual(indicator.backgroundColor, "rgb(217, 48, 37)", "update red dot should use the notification red color");
     assertEqual(indicator.width, "8px", "update red dot should render at the intended width");
     assertEqual(indicator.height, "8px", "update red dot should render at the intended height");
@@ -1180,8 +1206,8 @@ async function assertEditElementsLayerSelection(page, { backgroundId, foreground
     selection.actionRects.download.top === selection.actionRects["reset-layer-group"].top,
     "Edit Elements PSD download should render with the group actions row"
   );
-  assert(selection.actionText["layer-down"].includes("Layer down"), "Layer down should render text in the toolbar");
-  assert(selection.actionText["layer-up"].includes("Layer up"), "Layer up should render text in the toolbar");
+  assert(selection.actionText["layer-down"].length > 0, "Layer down should render localized text in the toolbar");
+  assert(selection.actionText["layer-up"].length > 0, "Layer up should render localized text in the toolbar");
   assert(
     selection.toolbarRect.width < 760,
     "Edit Elements two-row toolbar should stay compact instead of stretching across the viewport"
@@ -1314,7 +1340,11 @@ async function assertExpandComposer(page, viewport) {
   await waitForVisible(page, ".quick-edit-composer.expand-mode", "Expand composer should be visible");
   const snapshot = await page.evaluate(() => {
     const composer = document.querySelector("#quickEditComposer");
+    const panel = document.querySelector("#expandPanel");
     const textarea = document.querySelector("#quickEditPrompt");
+    const scale = document.querySelector("#expandScale");
+    const preset = document.querySelector("#expandPreset");
+    const activeRatio = document.querySelector("#expandRatios [data-expand-ratio].active");
     const rect = composer?.getBoundingClientRect();
     return {
       rect: rect ? {
@@ -1325,13 +1355,21 @@ async function assertExpandComposer(page, viewport) {
         width: Math.round(rect.width),
         height: Math.round(rect.height)
       } : null,
-      placeholder: textarea?.placeholder || "",
+      panelVisible: Boolean(panel && !panel.hidden && panel.getClientRects().length),
+      promptHidden: Boolean(textarea?.hidden),
+      scaleOptions: scale?.options.length || 0,
+      presetOptions: preset?.options.length || 0,
+      activeRatioChecked: activeRatio?.getAttribute("aria-checked") === "true",
       activeAction: document.querySelector("#quickEditComposer")?.classList.contains("expand-mode") || false
     };
   });
   assertRectVisible(snapshot.rect, "Expand composer");
   assertRectInsideViewport(snapshot.rect, viewport, "Expand composer");
-  assert(snapshot.placeholder.includes("extend"), "Expand composer should show expansion-specific placeholder text");
+  assert(snapshot.panelVisible, "Expand composer should show its visual controls panel");
+  assert(snapshot.promptHidden, "Expand composer should hide the Quick Edit prompt field");
+  assert(snapshot.scaleOptions >= 4, "Expand composer should show scale choices");
+  assert(snapshot.presetOptions >= 4, "Expand composer should show preset choices");
+  assert(snapshot.activeRatioChecked, "Expand composer should expose one selected ratio");
   assert(snapshot.activeAction, "Expand composer should use the expand controls mode");
   await page.locator("#quickEditCancel").click();
   await waitForHidden(page, "#quickEditComposer", "Expand composer should close after cancel");
@@ -1601,10 +1639,6 @@ function viewportRect(viewport) {
     width: viewport.width,
     height: viewport.height
   };
-}
-
-function npmCommand() {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
 }
 
 main().catch((error) => {

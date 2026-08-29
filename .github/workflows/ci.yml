@@ -75,6 +75,16 @@ jobs:
       - name: Run Windows visual regression checks
         if: runner.os == 'Windows' && startsWith(matrix.node, '24.')
         run: npm run visual:regression
+        env:
+          CODEX_CANVAS_VISUAL_DEBUG_DIR: dist/visual-debug
+
+      - name: Upload Windows visual regression diagnostics
+        if: failure() && runner.os == 'Windows' && startsWith(matrix.node, '24.')
+        uses: actions/upload-artifact@v6
+        with:
+          name: visual-regression-${{ runner.os }}-node-${{ matrix.node }}
+          path: dist/visual-debug
+          if-no-files-found: ignore
 
       - name: Verify release metadata
         if: startsWith(matrix.node, '24.')

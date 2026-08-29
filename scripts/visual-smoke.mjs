@@ -647,10 +647,23 @@ async function assertVersionDiffOverlay(page, versionIds) {
 
 async function waitForVersionDiffHeatmap(page) {
   await page.waitForFunction(() => {
-    return [...document.querySelectorAll(".version-diff-heatmap")]
-      .some((canvas) => !canvas.hidden && Number(canvas.dataset.changedPixels || 0) > 0);
+    const canvas = [...document.querySelectorAll(".version-diff-heatmap")]
+      .find((candidate) => !candidate.hidden && Number(candidate.dataset.changedPixels || 0) > 0);
+    if (!canvas) {
+      window.__museboardVisualHeatmapCandidate = null;
+      return false;
+    }
+    const tracked = window.__museboardVisualHeatmapCandidate;
+    if (!tracked || tracked.canvas !== canvas) {
+      window.__museboardVisualHeatmapCandidate = { canvas, since: performance.now() };
+      return false;
+    }
+    return canvas.isConnected && performance.now() - tracked.since >= 100;
   }, null, { timeout: 5000 }).catch((error) => {
     throw new Error(`version pixel-diff heatmap should render changed pixels: ${error.message}`);
+  });
+  await page.evaluate(() => {
+    window.__museboardVisualHeatmapCandidate = null;
   });
 }
 

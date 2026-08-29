@@ -83,5 +83,4 @@ jobs:
 
       - name: Smoke test installed release package
         if: matrix.node == '24.x'
-        shell: bash
-        run: node scripts/verify-release-archive.mjs "dist/release-ci/museboard-v$(node -p \"require('./package.json').version\").tgz"
+        run: node scripts/verify-release-archive.mjs dist/release-ci

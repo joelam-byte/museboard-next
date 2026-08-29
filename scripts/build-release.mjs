@@ -196,6 +196,7 @@ async function sanitizeReleasePackageJson(stageDir) {
     "smoke",
     "smoke:visual",
     "visual:regression",
+    "validate:contracts",
     "verify:release",
     "verify:archive",
     "build:release",

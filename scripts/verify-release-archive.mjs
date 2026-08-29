@@ -10,10 +10,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(await fs.readFile(path.join(rootDir, "package.json"), "utf8"));
-const archivePath = path.resolve(
-  rootDir,
-  process.argv[2] || path.join("dist", "release", `${packageJson.name}-v${packageJson.version}.tgz`)
-);
+const archivePath = resolveArchivePath(process.argv[2]);
 const installRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-canvas-release-install-"));
 
 try {
@@ -32,7 +29,7 @@ try {
   if (installedPackage.version !== packageJson.version || installedPlugin.version !== packageJson.version) {
     throw new Error("Installed release archive version does not match package.json.");
   }
-  for (const sourceOnlyScript of ["install:dev-cache", "smoke", "smoke:visual", "visual:regression", "verify:release", "verify:archive", "build:release", "test"]) {
+  for (const sourceOnlyScript of ["install:dev-cache", "smoke", "smoke:visual", "visual:regression", "validate:contracts", "verify:release", "verify:archive", "build:release", "test"]) {
     if (installedPackage.scripts?.[sourceOnlyScript]) {
       throw new Error(`Installed release archive exposes source-only npm script: ${sourceOnlyScript}`);
     }
@@ -60,6 +57,12 @@ try {
 
 function npmExecutable() {
   return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+function resolveArchivePath(argument) {
+  const candidate = path.resolve(rootDir, argument || path.join("dist", "release"));
+  if (candidate.toLowerCase().endsWith(".tgz")) return candidate;
+  return path.join(candidate, `${packageJson.name}-v${packageJson.version}.tgz`);
 }
 
 async function runPortableCommand(command, args, options = {}) {

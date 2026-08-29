@@ -17,6 +17,7 @@ import { createServer as createAgentCanvasServer } from "../src/server.mjs";
 import { addImage, addObject, deleteObjects, markStaleJobPlaceholders, promptHistory, readState, reorderLayerGroupLayer, restoreObjects, searchObjects, setLayerGroupOrder, transformState, updateObject, updateObjects, updateSelection, updateViewport, versionGroups } from "../src/store.mjs";
 import { appUpdateStatus, clearPublishedReleaseCacheForTest, updateApp } from "../src/updater.mjs";
 import { createFetchSafeTestServer } from "./test-server.mjs";
+import { countDirectionalPixelChanges } from "./visual-diff.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -69,6 +70,7 @@ async function main() {
     ["thread scoped auto collector", testAutoCollectorWatermark],
     ["fetch-safe ephemeral server", testFetchSafeEphemeralServer],
     ["visual runner npm invocation", testVisualRunnerNpmInvocation],
+    ["visual diff rendering tolerance", testVisualDiffRenderingTolerance],
     ["Museboard brand contract", testMuseboardBrandContract],
     ["package optional dependency scripts", testPackageOptionalDependencyScripts],
     ["plugin package manifest", testPluginPackageManifest],
@@ -194,6 +196,28 @@ async function testVisualRunnerNpmInvocation() {
       `${scriptName} should pass npm exec arguments without shell parsing`
     );
   }
+}
+
+async function testVisualDiffRenderingTolerance() {
+  const black = [0, 0, 0, 255];
+  const white = [255, 255, 255, 255];
+  const pixels = (...colors) => new Uint8ClampedArray(colors.flat());
+
+  const shiftedBaseline = pixels(black, white, white);
+  const shiftedCurrent = pixels(white, black, white);
+  assertEqual(
+    countDirectionalPixelChanges(shiftedCurrent, shiftedBaseline, 3, 1, 10),
+    0,
+    "a one-pixel rendering shift should not count as a visual change"
+  );
+
+  const blank = pixels(white, white, white, white, white);
+  const structuralChange = pixels(white, black, black, black, white);
+  assertEqual(
+    countDirectionalPixelChanges(structuralChange, blank, 5, 1, 10),
+    3,
+    "a structural fill should remain visible to the comparison"
+  );
 }
 
 async function testMuseboardBrandContract() {

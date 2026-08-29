@@ -8,6 +8,7 @@ import { addImage } from "../src/store.mjs";
 import { createServer as createAgentCanvasServer } from "../src/server.mjs";
 import { npmCliInvocation } from "./npm-cli.mjs";
 import { createFetchSafeTestServer } from "./test-server.mjs";
+import { countDirectionalPixelChanges } from "./visual-diff.mjs";
 
 const pngOne = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 const pngTwo = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFUlEQVR4nGO8Y6D6n4GBgYEJRIAwACHvAjSDKprFAAAAAElFTkSuQmCC";
@@ -255,7 +256,7 @@ async function readBaseline(baselinePath, name) {
 async function comparePngBuffers(browser, baseline, current) {
   const page = await browser.newPage();
   try {
-    return await page.evaluate(async ({ baselineDataUrl, currentDataUrl, channelTolerance }) => {
+    return await page.evaluate(async ({ baselineDataUrl, currentDataUrl, channelTolerance, pixelComparatorSource }) => {
       async function loadImage(dataUrl) {
         return new Promise((resolve, reject) => {
           const image = new Image();
@@ -281,22 +282,32 @@ async function comparePngBuffers(browser, baseline, current) {
       context.drawImage(currentImage, 0, 0);
       const currentPixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
 
-      let changed = 0;
       const total = baselinePixels.length / 4;
-      for (let index = 0; index < baselinePixels.length; index += 4) {
-        const delta = Math.max(
-          Math.abs(baselinePixels[index] - currentPixels[index]),
-          Math.abs(baselinePixels[index + 1] - currentPixels[index + 1]),
-          Math.abs(baselinePixels[index + 2] - currentPixels[index + 2]),
-          Math.abs(baselinePixels[index + 3] - currentPixels[index + 3])
-        );
-        if (delta > channelTolerance) changed += 1;
-      }
-      return { changedRatio: changed / total, dimensionsChanged: false };
+      // Run the same tested comparator in the browser where decoded RGBA buffers already live.
+      const countDirectionalChanges = Function(`"use strict"; return (${pixelComparatorSource});`)();
+      const currentToBaseline = countDirectionalChanges(
+        currentPixels,
+        baselinePixels,
+        canvas.width,
+        canvas.height,
+        channelTolerance
+      );
+      const baselineToCurrent = countDirectionalChanges(
+        baselinePixels,
+        currentPixels,
+        canvas.width,
+        canvas.height,
+        channelTolerance
+      );
+      return {
+        changedRatio: Math.max(currentToBaseline, baselineToCurrent) / total,
+        dimensionsChanged: false
+      };
     }, {
       baselineDataUrl: `data:image/png;base64,${baseline.toString("base64")}`,
       currentDataUrl: `data:image/png;base64,${current.toString("base64")}`,
-      channelTolerance
+      channelTolerance,
+      pixelComparatorSource: countDirectionalPixelChanges.toString()
     });
   } finally {
     await page.close();

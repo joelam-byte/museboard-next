@@ -3,6 +3,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { SKILL_DESCRIPTORS, SKILL_IDS, validateSkillDescriptor } from "../src/agent-run-contracts.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -18,13 +19,22 @@ assert(plugin.interface?.displayName === "Museboard", "plugin display name must 
 assert(Boolean(mcp.mcpServers?.museboard), ".mcp.json must expose the museboard server");
 assert(!mcp.mcpServers?.["codex-canvas"], ".mcp.json must not expose the upstream server name");
 
+for (const descriptor of SKILL_DESCRIPTORS) validateSkillDescriptor(descriptor);
+assert(SKILL_DESCRIPTORS.length === SKILL_IDS.length, "every stable AgentRun Skill id must have one descriptor");
+assert(new Set(SKILL_DESCRIPTORS.map((descriptor) => descriptor.id)).size === SKILL_IDS.length, "AgentRun Skill descriptors must use unique stable ids");
+
 await validateSkill("SKILL.md", "museboard");
 for (const entry of await fs.readdir(path.join(rootDir, "skills"), { withFileTypes: true })) {
   if (!entry.isDirectory()) continue;
   await validateSkill(path.join("skills", entry.name, "SKILL.md"), entry.name);
 }
 
-console.log(JSON.stringify({ ok: true, plugin: plugin.name, version: plugin.version }, null, 2));
+console.log(JSON.stringify({
+  ok: true,
+  plugin: plugin.name,
+  version: plugin.version,
+  agentRunSkillIds: SKILL_IDS
+}, null, 2));
 
 async function readJson(relativePath) {
   return JSON.parse(await fs.readFile(path.join(rootDir, relativePath), "utf8"));

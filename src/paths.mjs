@@ -35,6 +35,18 @@ export function jobsDirFor(projectDir, canvasId = null) {
   return path.join(canvasDataDirFor(projectDir, canvasId), "jobs");
 }
 
+export function agentRunsDirFor(projectDir, canvasId) {
+  return path.join(canvasDataDirFor(projectDir, canvasId), "runs");
+}
+
+export function agentRunDirFor(projectDir, canvasId, agentRunId) {
+  return path.join(agentRunsDirFor(projectDir, canvasId), storagePathSegment(agentRunId));
+}
+
+export function agentRunPathFor(projectDir, canvasId, agentRunId) {
+  return path.join(agentRunDirFor(projectDir, canvasId, agentRunId), "run.json");
+}
+
 export function runtimePathFor(projectDir) {
   return path.join(dataDirFor(projectDir), ".codex-canvas-runtime.json");
 }

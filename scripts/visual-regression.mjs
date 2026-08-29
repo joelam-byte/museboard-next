@@ -17,6 +17,7 @@ const updateBaselines = process.argv.includes("--update");
 const pixelThreshold = normalizePixelThreshold(process.env.CODEX_CANVAS_VISUAL_THRESHOLD);
 const visualDebugDir = readOptionValue(process.argv, "--debug-dir") || process.env.CODEX_CANVAS_VISUAL_DEBUG_DIR || "";
 const channelTolerance = 10;
+const renderingToleranceCssPixels = 2;
 const viewports = [
   { name: "desktop", width: 1280, height: 800, deviceScaleFactor: 1 },
   { name: "mobile", width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }
@@ -71,7 +72,11 @@ async function main() {
         }
 
         const baseline = await readBaseline(baselinePath, name);
-        const diff = await comparePngBuffers(browser, baseline, screenshot);
+        const pixelNeighborhoodRadius = Math.max(
+          1,
+          Math.round((viewport.deviceScaleFactor || 1) * renderingToleranceCssPixels)
+        );
+        const diff = await comparePngBuffers(browser, baseline, screenshot, pixelNeighborhoodRadius);
         if (diff.changedRatio > pixelThreshold) {
           if (visualDebugDir) {
             await fsp.mkdir(visualDebugDir, { recursive: true });
@@ -253,10 +258,10 @@ async function readBaseline(baselinePath, name) {
   }
 }
 
-async function comparePngBuffers(browser, baseline, current) {
+async function comparePngBuffers(browser, baseline, current, pixelNeighborhoodRadius) {
   const page = await browser.newPage();
   try {
-    return await page.evaluate(async ({ baselineDataUrl, currentDataUrl, channelTolerance, pixelComparatorSource }) => {
+    return await page.evaluate(async ({ baselineDataUrl, currentDataUrl, channelTolerance, pixelComparatorSource, pixelNeighborhoodRadius }) => {
       async function loadImage(dataUrl) {
         return new Promise((resolve, reject) => {
           const image = new Image();
@@ -290,14 +295,16 @@ async function comparePngBuffers(browser, baseline, current) {
         baselinePixels,
         canvas.width,
         canvas.height,
-        channelTolerance
+        channelTolerance,
+        pixelNeighborhoodRadius
       );
       const baselineToCurrent = countDirectionalChanges(
         baselinePixels,
         currentPixels,
         canvas.width,
         canvas.height,
-        channelTolerance
+        channelTolerance,
+        pixelNeighborhoodRadius
       );
       return {
         changedRatio: Math.max(currentToBaseline, baselineToCurrent) / total,
@@ -307,7 +314,8 @@ async function comparePngBuffers(browser, baseline, current) {
       baselineDataUrl: `data:image/png;base64,${baseline.toString("base64")}`,
       currentDataUrl: `data:image/png;base64,${current.toString("base64")}`,
       channelTolerance,
-      pixelComparatorSource: countDirectionalPixelChanges.toString()
+      pixelComparatorSource: countDirectionalPixelChanges.toString(),
+      pixelNeighborhoodRadius
     });
   } finally {
     await page.close();

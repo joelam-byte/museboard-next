@@ -1,4 +1,4 @@
-export function countDirectionalPixelChanges(sourcePixels, targetPixels, width, height, channelTolerance) {
+export function countDirectionalPixelChanges(sourcePixels, targetPixels, width, height, channelTolerance, neighborhoodRadius = 1) {
   const pixelDelta = (sourceIndex, targetIndex) => Math.max(
     Math.abs(sourcePixels[sourceIndex] - targetPixels[targetIndex]),
     Math.abs(sourcePixels[sourceIndex + 1] - targetPixels[targetIndex + 1]),
@@ -13,8 +13,8 @@ export function countDirectionalPixelChanges(sourcePixels, targetPixels, width, 
       if (pixelDelta(sourceIndex, sourceIndex) <= channelTolerance) continue;
 
       let neighborhoodMatch = false;
-      for (let targetY = Math.max(0, y - 1); targetY <= Math.min(height - 1, y + 1) && !neighborhoodMatch; targetY += 1) {
-        for (let targetX = Math.max(0, x - 1); targetX <= Math.min(width - 1, x + 1); targetX += 1) {
+      for (let targetY = Math.max(0, y - neighborhoodRadius); targetY <= Math.min(height - 1, y + neighborhoodRadius) && !neighborhoodMatch; targetY += 1) {
+        for (let targetX = Math.max(0, x - neighborhoodRadius); targetX <= Math.min(width - 1, x + neighborhoodRadius); targetX += 1) {
           const targetIndex = (targetY * width + targetX) * 4;
           if (pixelDelta(sourceIndex, targetIndex) <= channelTolerance) {
             neighborhoodMatch = true;

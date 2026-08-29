@@ -211,6 +211,14 @@ async function testVisualDiffRenderingTolerance() {
     "a one-pixel rendering shift should not count as a visual change"
   );
 
+  const highDpiBaseline = pixels(black, white, white, white);
+  const highDpiCurrent = pixels(white, white, black, white);
+  assertEqual(
+    countDirectionalPixelChanges(highDpiCurrent, highDpiBaseline, 4, 1, 10, 2),
+    0,
+    "the rendering neighborhood should scale for high-DPI screenshots"
+  );
+
   const blank = pixels(white, white, white, white, white);
   const structuralChange = pixels(white, black, black, black, white);
   assertEqual(

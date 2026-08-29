@@ -13,23 +13,40 @@ Museboard Next 基于 MIT 许可的 Codex-Canvas v0.3.1。安装新版本时使�
 安装完成后，新建一个 Codex 任务，再使用 @Museboard 打开画布。
 ```
 
-安装流程是：把仓库 clone 到本机一个长期保留的目录，切换到最新稳定 Release 对应的本地分支，运行 personal marketplace 安装器，然后用 Codex CLI 安装这个 personal plugin。不要直接从 `main` 安装。
+当前还没有 Museboard stable GitHub Release。首次稳定版发布前，请从 PR #9 安装待合并的预览源码；首次稳定版发布后，普通用户改用 stable Release 流程。两种流程都会运行 personal marketplace 安装器，再由 Codex CLI 安装这个 personal plugin。不要直接从 `main` 安装，也不要把只用于记录上游来源的 `upstream-codex-canvas-v0.3.1` tag 当作 Museboard Release。
 
 ## 手动安装
 
-下面使用 `~/src/museboard` 作为示例路径；它不是固定要求。
+### 当前开发/预发布阶段
+
+在 Museboard 首次 stable Release 发布前，从 PR #9 的 GitHub pull ref 安装待合并的预览源码。下面的命令在 Windows PowerShell、macOS 和 Linux 终端中都可逐行执行：
 
 ```bash
-mkdir -p ~/src
-git clone https://github.com/joelam-byte/museboard-next.git ~/src/museboard
-cd ~/src/museboard
+git clone https://github.com/joelam-byte/museboard-next.git museboard
+cd museboard
+git fetch origin pull/9/head
+git switch --create museboard-preview FETCH_HEAD
+npm ci
+npm run install:preview
+codex plugin add museboard@personal
+```
+
+`npm run install:preview` 只安装当前已检出的评审源码，不查询或伪造 stable Release。以后更新 PR #9 预览源码时，在干净的 `museboard-preview` 分支运行 `git fetch origin pull/9/head` 和 `git merge --ff-only FETCH_HEAD`，再重复 `npm ci`、`npm run install:preview` 和 `codex plugin add museboard@personal`。
+
+### 首次 stable Release 发布后
+
+Museboard 发布首个非 prerelease 的 `vX.Y.Z` GitHub Release 后，普通用户使用以下流程：
+
+```bash
+git clone https://github.com/joelam-byte/museboard-next.git museboard
+cd museboard
 npm run checkout:stable
 npm ci
 npm run install:personal
 codex plugin add museboard@personal
 ```
 
-`npm run checkout:stable` 会从最新稳定的 `vX.Y.Z` tag 创建或更新本地 `museboard-stable` 分支。工作树最终必须精确停在 Release commit，因此不会把 `main` 上尚未发布的提交安装给普通用户。
+`npm run checkout:stable` 只接受产物完整、manifest 与 tag 一致的 Museboard stable GitHub Release，并从对应的 `vX.Y.Z` tag 创建或更新本地 `museboard-stable` 分支。尚无 stable Release 时，它会按设计停止；工作树最终必须精确停在 Release commit，因此不会把 `main` 上尚未发布的提交安装给普通用户。
 
 `npm run install:personal` 会创建或更新 `~/plugins/museboard`，并把 Museboard 条目写入 `~/.agents/plugins/marketplace.json`。它还会 best-effort 安装 `rapidocr_onnxruntime`，用于 Edit Text 本地 OCR；失败时 plugin 仍会完成安装，并回退到 Codex 视觉识别。
 

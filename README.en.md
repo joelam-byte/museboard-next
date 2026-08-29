@@ -23,7 +23,7 @@ After installation, tell the user to start a new Codex task and type `@Museboard
 
 See the full installation guide in [`INSTALL.md`](INSTALL.md).
 
-Stable versions ship through GitHub Releases. **Settings → Version** only installs a `vX.Y.Z` release after its assets are complete and its manifest matches the tag, never unreleased commits from `main`. The old server exits after an update; reopen the canvas and start a new Codex task.
+Museboard does not have a stable Release yet. During development and prerelease, follow the PR #9 preview path in `INSTALL.md`; do not run `checkout:stable` or use the upstream provenance tag. Switch to the stable path after the first stable Release. **Settings → Version** only installs a `vX.Y.Z` release after its assets are complete and its manifest matches the tag, never unreleased commits from `main`. The old server exits after an update; reopen the canvas and start a new Codex task.
 
 After installation, start a new Codex task and open the canvas:
 

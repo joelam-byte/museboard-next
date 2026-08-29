@@ -193,6 +193,7 @@ async function sanitizeReleasePackageJson(stageDir) {
   const packageJson = await readJson(packagePath);
   for (const script of [
     "install:dev-cache",
+    "install:preview",
     "smoke",
     "smoke:visual",
     "visual:regression",

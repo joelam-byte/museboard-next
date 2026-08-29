@@ -23,7 +23,7 @@ Museboard Next 基于 MIT 许可的 [Codex-Canvas v0.3.1](https://github.com/Xia
 
 完整安装说明见 [`INSTALL.md`](INSTALL.md)。
 
-稳定版本通过 GitHub Release 发布；画布中的 **Settings → Version** 只安装产物完整、manifest 与 tag 一致的 `vX.Y.Z`，不会跟随 `main` 上的未发布提交。更新后旧 server 会退出，需要重新打开画布并新建 Codex 任务。
+当前尚无 Museboard stable Release；开发/预发布安装请使用 `INSTALL.md` 中基于 PR #9 的预览流程，不要运行 `checkout:stable`，也不要使用上游来源 tag。首次稳定版发布后改用 stable 流程。画布中的 **Settings → Version** 只安装产物完整、manifest 与 tag 一致的 `vX.Y.Z`，不会跟随 `main` 上的未发布提交。更新后旧 server 会退出，需要重新打开画布并新建 Codex 任务。
 
 安装完成后，新建一个 Codex 任务并打开画布：
 

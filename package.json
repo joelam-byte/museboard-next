@@ -44,6 +44,7 @@
     "setup:image-deps": "node ./bin/museboard.mjs setup-image-deps",
     "setup:deps": "node ./bin/museboard.mjs setup-deps",
     "checkout:stable": "node ./scripts/checkout-stable-release.mjs",
+    "install:preview": "node ./scripts/install-personal-plugin.mjs",
     "install:personal": "node ./scripts/install-personal-plugin.mjs",
     "install:dev-cache": "node ./scripts/link-dev-plugin-cache.mjs",
     "doctor:ocr": "node ./bin/museboard.mjs doctor-ocr --json",

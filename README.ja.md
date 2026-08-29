@@ -23,7 +23,7 @@ https://github.com/joelam-byte/museboard-next.git とその INSTALL.md に従っ
 
 完全なインストール手順は [`INSTALL.md`](INSTALL.md) を参照してください。
 
-安定版は GitHub Release で公開されます。**Settings → Version** は配布物が揃い、manifest と tag が一致する `vX.Y.Z` だけをインストールし、`main` の未公開コミットには追従しません。更新後は旧 server が終了するため、キャンバスを開き直して新しい Codex タスクを開始してください。
+Museboard の stable Release はまだありません。開発・プレリリース期間は `INSTALL.md` にある PR #9 のプレビュー手順を使い、`checkout:stable` や upstream provenance tag は使用しないでください。最初の stable Release 公開後は stable 手順に切り替えます。**Settings → Version** は配布物が揃い、manifest と tag が一致する `vX.Y.Z` だけをインストールし、`main` の未公開コミットには追従しません。更新後は旧 server が終了するため、キャンバスを開き直して新しい Codex タスクを開始してください。
 
 インストール後、新しい Codex タスクでキャンバスを開きます。
 

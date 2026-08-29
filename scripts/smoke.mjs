@@ -18,6 +18,7 @@ import { addImage, addObject, deleteObjects, markStaleJobPlaceholders, promptHis
 import { appUpdateStatus, clearPublishedReleaseCacheForTest, updateApp } from "../src/updater.mjs";
 import { createFetchSafeTestServer } from "./test-server.mjs";
 import { countDirectionalPixelChanges } from "./visual-diff.mjs";
+import { npmCliInvocation } from "./npm-cli.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -74,6 +75,7 @@ async function main() {
     ["Museboard brand contract", testMuseboardBrandContract],
     ["package optional dependency scripts", testPackageOptionalDependencyScripts],
     ["plugin package manifest", testPluginPackageManifest],
+    ["preview plugin installer", testPreviewPluginInstaller],
     ["personal plugin installer", testPersonalPluginInstaller],
     ["dev plugin cache linker", testDevPluginCacheLinker],
     ["app update strategy", testAppUpdateStrategy],
@@ -2489,6 +2491,38 @@ async function testPersonalPluginInstaller() {
   if (!blocked.stderr.includes("Refusing to replace non-symlink plugin path")) {
     throw new Error("personal plugin installer should explain non-symlink path conflicts.");
   }
+}
+
+async function testPreviewPluginInstaller() {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-preview-plugin-"));
+  const npm = npmCliInvocation([
+    "run",
+    "--silent",
+    "install:preview",
+    "--",
+    "--json",
+    "--skip-ocr"
+  ]);
+  const { stdout } = await execFileAsync(npm.command, npm.args, {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      CODEX_CANVAS_PERSONAL_HOME: tmp,
+      npm_config_cache: path.join(tmp, "npm-cache")
+    },
+    maxBuffer: 1024 * 1024,
+    windowsHide: true
+  });
+  const result = JSON.parse(stdout);
+  assertEqual(result.ok, true, "preview install should complete from the current source checkout");
+  assertEqual(result.sourcePath, "./plugins/museboard", "preview install should register the Museboard source checkout");
+
+  const marketplace = JSON.parse(await fs.readFile(path.join(tmp, ".agents", "plugins", "marketplace.json"), "utf8"));
+  const entry = marketplace.plugins.find((plugin) => plugin.name === "museboard");
+  assertEqual(entry?.source?.path, "./plugins/museboard", "preview install should create a usable personal marketplace entry");
+  const linkedRealPath = await fs.realpath(path.join(tmp, "plugins", "museboard"));
+  const repoRealPath = await fs.realpath(process.cwd());
+  assertEqual(linkedRealPath, repoRealPath, "preview install should link the current source checkout");
 }
 
 async function testDevPluginCacheLinker() {

@@ -1,8 +1,10 @@
-# Codex-Canvas
+# Museboard
 
 [中文](README.md) | [English](README.en.md) | [日本語](README.ja.md)
 
-Codex-Canvas 是一个面向 Codex 的无限画布 Plugin，无需配置 API，调用 Codex 内置 GPT-image-2 实现画布编辑功能。它可以在 Codex 里打开画布，把生成的图片收录到当前项目中，并让你继续整理、标注、编辑、比较这些视觉资产。
+Museboard 是一个面向 Codex 的无限画布 Plugin，无需配置 API，调用 Codex 内置 GPT-image-2 实现画布编辑功能。它可以在 Codex 里打开画布，把生成的图片收录到当前项目中，并让你继续整理、标注、编辑、比较这些视觉资产。
+
+Museboard Next 基于 MIT 许可的 [Codex-Canvas v0.3.1](https://github.com/Xiangyu-CAS/codex-canvas/releases/tag/v0.3.1) 建立；基线与后续差异见 [`docs/UPSTREAM_BASELINE.md`](docs/UPSTREAM_BASELINE.md)。
 
 这个插件把 Codex 变成更接近 Lovart 的工作形态：一边对话，一边画布，并参照 Lovart 画布提供许多强大的编辑功能。
 
@@ -15,8 +17,8 @@ Codex-Canvas 是一个面向 Codex 的无限画布 Plugin，无需配置 API，�
 把下面这段复制给 Codex：
 
 ```text
-请根据 https://github.com/Xiangyu-CAS/codex-canvas.git 里的 INSTALL.md 安装 Codex-Canvas。
-安装完成后，提示用户新建 Codex 任务，再输入：`@Codex-Canvas 打开画布` 来启动
+请根据 https://github.com/joelam-byte/museboard-next.git 里的 INSTALL.md 安装 Museboard。
+安装完成后，提示用户新建 Codex 任务，再输入：`@Museboard 打开画布` 来启动
 ```
 
 完整安装说明见 [`INSTALL.md`](INSTALL.md)。
@@ -26,7 +28,7 @@ Codex-Canvas 是一个面向 Codex 的无限画布 Plugin，无需配置 API，�
 安装完成后，新建一个 Codex 任务并打开画布：
 
 ```text
-@Codex-Canvas 打开画布
+@Museboard 打开画布
 ```
 
 ## Roadmap
@@ -39,7 +41,7 @@ Codex-Canvas 是一个面向 Codex 的无限画布 Plugin，无需配置 API，�
 
 ### 1. 打开画布并自动收录生成图片
 
-在当前 Codex 对话里输入 `@Codex-Canvas 打开画布`，Codex-Canvas 会在 in-app browser 中打开项目本地画布。左侧继续对话，右侧管理视觉资产。绑定 thread 后，Codex-Canvas 只会收录该 thread 在 `~/.codex/generated_images/<thread-id>` 下的生成图片，不会扫描其他项目、其他 thread 或整个项目目录；生成结果会持久化到当前 thread 的画布中。
+在当前 Codex 对话里输入 `@Museboard 打开画布`，Museboard 会在 in-app browser 中打开项目本地画布。左侧继续对话，右侧管理视觉资产。绑定 thread 后，Museboard 只会收录该 thread 在 `~/.codex/generated_images/<thread-id>` 下的生成图片，不会扫描其他项目、其他 thread 或整个项目目录；生成结果会持久化到当前 thread 的画布中。
 
 <p align="center">
   <img src="assets/readme/auto-collect.webp" alt="自动收录生成图片" width="640">
@@ -61,7 +63,7 @@ Codex-Canvas 是一个面向 Codex 的无限画布 Plugin，无需配置 API，�
 
 ### 3. Edit Elements：拆出元素继续重排
 
-Edit Elements 可以把图片拆成背景、文字、商品、人物、价格标签等可移动图层。拆分后可以在画布上重排素材，也可以让后台继续补全被前景遮挡的背景层。下载任意一个拆分图层时，Codex-Canvas 会把同组图层一起导出为 PSD，方便继续交给 Photoshop、Photopea 等专业工具精修。
+Edit Elements 可以把图片拆成背景、文字、商品、人物、价格标签等可移动图层。拆分后可以在画布上重排素材，也可以让后台继续补全被前景遮挡的背景层。下载任意一个拆分图层时，Museboard 会把同组图层一起导出为 PSD，方便继续交给 Photoshop、Photopea 等专业工具精修。
 
 <p align="center">
   <img src="assets/readme/edit-elements-comparison.webp" alt="Edit Elements comparison" width="700">
@@ -110,7 +112,7 @@ Expand 支持可视化扩图框和常用比例预设，例如 1:1、3:4、16:9�
 
 ## 使用说明
 
-Codex-Canvas 会把画布数据保存在当前项目的 `canvas/` 目录下。生成资产、任务日志和中间文件都会留在本地项目中。
+Museboard 会把画布数据保存在当前项目的 `canvas/` 目录下。生成资产、任务日志和中间文件都会留在本地项目中。
 
 `Send to chat` 目前还是通过 Codex app-server 提交的原型路径。它可以在协议层完成，但不保证一定出现在当前可见的 Codex 桌面端聊天 UI 中。更可靠的方式是使用 `Copy @file`，然后把引用粘贴到当前 Codex 聊天框。
 
@@ -121,7 +123,7 @@ Codex-Canvas 会把画布数据保存在当前项目的 `canvas/` 目录下。�
 ```bash
 npm install
 npm test
-node ./bin/codex-canvas.mjs open --project .
+node ./bin/museboard.mjs open --project .
 ```
 
 相关文档：

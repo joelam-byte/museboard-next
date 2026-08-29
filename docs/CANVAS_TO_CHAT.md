@@ -1,24 +1,24 @@
 # Canvas to Codex Chat
 
-This note records the current evidence for sending a selected Codex-Canvas image back into Codex chat.
+This note records the current evidence for sending a selected Museboard image back into Codex chat.
 
 ## Goal
 
-Codex-Canvas supports chat-to-canvas collection: generated or edited images can be imported into the project canvas. It also has a prototype canvas-to-chat path: a user selects an image on the canvas and submits it to a bound Codex thread through the Codex app-server protocol as a local image input.
+Museboard supports chat-to-canvas collection: generated or edited images can be imported into the project canvas. It also has a prototype canvas-to-chat path: a user selects an image on the canvas and submits it to a bound Codex thread through the Codex app-server protocol as a local image input.
 
 ## Working Paths
 
-One supported path for giving Codex an image from Codex-Canvas is to start a Codex CLI turn with the selected image as an initial attachment:
+One supported path for giving Codex an image from Museboard is to start a Codex CLI turn with the selected image as an initial attachment:
 
 ```bash
 codex exec --cd <project-dir> --image <absolute-image-path> -- '<prompt>'
 ```
 
-Codex-Canvas already uses this shape for background image jobs in `src/codex-runner.mjs`. It is cross-platform and does not rely on desktop UI automation.
+Museboard already uses this shape for background image jobs in `src/codex-runner.mjs`. It is cross-platform and does not rely on desktop UI automation.
 
 Limitation: this creates or uses a CLI execution context. It does not inject the image into the currently visible Codex desktop chat composer.
 
-For the visible Codex chat flow, Codex-Canvas uses an explicit thread binding plus the Codex app-server protocol described below, but this currently proves only that the app-server accepted and completed a turn. It does not reliably prove that the currently visible Codex desktop chat UI rendered that turn.
+For the visible Codex chat flow, Museboard uses an explicit thread binding plus the Codex app-server protocol described below, but this currently proves only that the app-server accepted and completed a turn. It does not reliably prove that the currently visible Codex desktop chat UI rendered that turn.
 
 ## App-Server Turn Evidence
 
@@ -77,11 +77,11 @@ The test flow was:
 4. Send `turn/start` with text plus `{ "type": "localImage", "path": "/absolute/path/to/canvas/assets/..." }`.
 5. Wait for `turn/completed`.
 
-The server emitted a `userMessage` item containing both the text input and the `localImage` input, then completed successfully with the expected assistant response. This proves the app-server protocol accepts local canvas image paths as turn inputs when Codex-Canvas can reach an app-server and has a target `threadId`. It does not prove that a separate, already-visible Codex desktop window will refresh and show that externally started turn.
+The server emitted a `userMessage` item containing both the text input and the `localImage` input, then completed successfully with the expected assistant response. This proves the app-server protocol accepts local canvas image paths as turn inputs when Museboard can reach an app-server and has a target `threadId`. It does not prove that a separate, already-visible Codex desktop window will refresh and show that externally started turn.
 
 ## Integration Constraints
 
-There are two integration requirements for Codex-Canvas to send an image into an existing Codex chat:
+There are two integration requirements for Museboard to send an image into an existing Codex chat:
 
 1. The backend needs the target Codex `threadId`.
 2. The backend needs a supported connection to the app-server that owns that thread.
@@ -94,7 +94,7 @@ The local `codex app-server proxy` command can proxy JSON-RPC to an app-server c
 ~/.codex/app-server-control/app-server-control.sock
 ```
 
-So Codex-Canvas cannot assume that the desktop app always exposes a usable control socket.
+So Museboard cannot assume that the desktop app always exposes a usable control socket.
 
 `codex app-server daemon start` was also tested on this machine. It failed because the managed standalone Codex install was missing at:
 
@@ -102,7 +102,7 @@ So Codex-Canvas cannot assume that the desktop app always exposes a usable contr
 ~/.codex/packages/standalone/current/codex
 ```
 
-That daemon path can be enabled by installing the standalone Codex package with the Codex installer, but Codex-Canvas should not require it for core behavior.
+That daemon path can be enabled by installing the standalone Codex package with the Codex installer, but Museboard should not require it for core behavior.
 
 The direct WebSocket startup path above does work from the bundled Codex app CLI and is the best current prototype transport.
 
@@ -110,8 +110,8 @@ The direct WebSocket startup path above does work from the bundled Codex app CLI
 
 The implemented path uses an explicit thread binding and treats each Codex thread as its own canvas scope:
 
-1. When the user opens Codex-Canvas from Codex, pass a Codex thread binding for the project canvas.
-   - CLI: `codex-canvas open --thread-id <codex-thread-id>`.
+1. When the user opens Museboard from Codex, pass a Codex thread binding for the project canvas.
+   - CLI: `museboard open --thread-id <codex-thread-id>`.
    - MCP: `open_canvas` accepts `threadId`.
    - HTTP: `POST /api/chat-binding` stores or replaces the binding.
 2. The binding is stored in `canvas/.codex-canvas-runtime.json` as `chatThreadId` and `canvasId`.
@@ -130,7 +130,7 @@ The implemented path uses an explicit thread binding and treats each Codex threa
 8. Visual `send-to-chat` returns after `turn/start` is accepted and keeps the temporary app-server/WebSocket alive in a background monitor until completion or timeout. This avoids blocking the Canvas HTTP request for long image-analysis or image-generation turns. `mention-file` remains a short completion-waiting path unless it also includes the visual image input.
 9. MCP `send_to_chat` and HTTP callers can explicitly use stable `send-to-chat` and `mention-file` actions on selected images; the prompt text is owned by the backend, not the frontend. The frontend `@file` toolbar button intentionally does not call `mention-file`; it prepares/copies an `@<absolute-path>` reference so the user can paste it into the Codex chat box manually without sending a turn.
 
-This keeps canvas-to-chat deterministic at the protocol level: Codex-Canvas never guesses a destination thread, never creates a new thread as a fallback for the button, and never shares a bound canvas between Codex threads. The `mention-file` action is still a real app-server turn, not a native Codex composer draft or guaranteed visible desktop UI update, but it uses Codex's file-mention input type instead of only a visual image input.
+This keeps canvas-to-chat deterministic at the protocol level: Museboard never guesses a destination thread, never creates a new thread as a fallback for the button, and never shares a bound canvas between Codex threads. The `mention-file` action is still a real app-server turn, not a native Codex composer draft or guaranteed visible desktop UI update, but it uses Codex's file-mention input type instead of only a visual image input.
 
 ## Fallback UX
 
@@ -151,4 +151,4 @@ Do not implement canvas-to-chat by:
 - Clipboard-only image paste automation.
 - DOM scraping or mutation of the desktop app chat UI.
 
-These approaches are fragile and violate Codex-Canvas' macOS/Windows portability requirement.
+These approaches are fragile and violate Museboard's macOS/Windows portability requirement.

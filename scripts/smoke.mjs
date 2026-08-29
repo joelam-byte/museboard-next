@@ -16,6 +16,7 @@ import { createOperationLease } from "../src/operation-leases.mjs";
 import { createServer as createAgentCanvasServer } from "../src/server.mjs";
 import { addImage, addObject, deleteObjects, markStaleJobPlaceholders, promptHistory, readState, reorderLayerGroupLayer, restoreObjects, searchObjects, setLayerGroupOrder, transformState, updateObject, updateObjects, updateSelection, updateViewport, versionGroups } from "../src/store.mjs";
 import { appUpdateStatus, clearPublishedReleaseCacheForTest, updateApp } from "../src/updater.mjs";
+import { createFetchSafeTestServer } from "./test-server.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -66,6 +67,9 @@ async function main() {
     ["mcp thread scoped collector", testMcpThreadScopedCollector],
     ["mcp numeric boundaries", testMcpNumericBoundaries],
     ["thread scoped auto collector", testAutoCollectorWatermark],
+    ["fetch-safe ephemeral server", testFetchSafeEphemeralServer],
+    ["visual runner npm invocation", testVisualRunnerNpmInvocation],
+    ["Museboard brand contract", testMuseboardBrandContract],
     ["package optional dependency scripts", testPackageOptionalDependencyScripts],
     ["plugin package manifest", testPluginPackageManifest],
     ["personal plugin installer", testPersonalPluginInstaller],
@@ -98,10 +102,11 @@ async function main() {
 }
 
 async function createServer(options = {}) {
-  const result = await createAgentCanvasServer({
-    persistentRegistryPath: await persistentRegistryPathForSmoke(),
-    ...options
-  });
+  const persistentRegistryPath = await persistentRegistryPathForSmoke();
+  const result = await createFetchSafeTestServer(
+    (serverOptions) => createAgentCanvasServer({ persistentRegistryPath, ...serverOptions }),
+    options
+  );
   const close = result.server.close.bind(result.server);
   result.server.close = (callback) => {
     const closing = close(callback);
@@ -118,6 +123,101 @@ async function persistentRegistryPathForSmoke() {
     smokeProjectRegistryPath = path.join(tmp, "projects.json");
   }
   return smokeProjectRegistryPath;
+}
+
+async function testFetchSafeEphemeralServer() {
+  let calls = 0;
+  let unsafeServerClosed = false;
+  const result = await createFetchSafeTestServer(async () => {
+    calls += 1;
+    if (calls === 1) {
+      return {
+        url: "http://127.0.0.1:6000/?project=blocked-port",
+        server: {
+          close(callback) {
+            unsafeServerClosed = true;
+            callback();
+          }
+        }
+      };
+    }
+    return {
+      url: "http://127.0.0.1:49152/?project=safe-port",
+      server: { close() {} }
+    };
+  }, { port: 0 });
+
+  assertEqual(new URL(result.url).port, "49152", "ephemeral test server should retry Fetch-blocked ports");
+  assertEqual(calls, 2, "ephemeral test server should stop after reaching a Fetch-safe port");
+  assertEqual(unsafeServerClosed, true, "ephemeral test server should close a Fetch-blocked listener before retrying");
+}
+
+async function testVisualRunnerNpmInvocation() {
+  const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-canvas-visual-runner-"));
+  const npmCliPath = path.join(fixtureDir, "fake npm cli.mjs");
+  await fs.writeFile(npmCliPath, [
+    'import fs from "node:fs";',
+    'fs.writeFileSync(process.env.CODEX_CANVAS_NPM_CAPTURE, JSON.stringify(process.argv.slice(2)));'
+  ].join("\n"));
+
+  for (const scriptName of ["visual-smoke.mjs", "visual-regression.mjs"]) {
+    const capturePath = path.join(fixtureDir, `${scriptName}.npm-args.json`);
+    const scriptPath = path.join(process.cwd(), "scripts", scriptName);
+    await execFileAsync(process.execPath, [scriptPath], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        npm_execpath: npmCliPath,
+        CODEX_CANVAS_NPM_CAPTURE: capturePath
+      },
+      windowsHide: true
+    });
+
+    const args = JSON.parse(await fs.readFile(capturePath, "utf8"));
+    const expectedArgs = [
+      "exec",
+      "--yes",
+      "--package",
+      "playwright",
+      "--",
+      "node",
+      scriptPath,
+      "--runner"
+    ];
+    assertEqual(
+      JSON.stringify(args),
+      JSON.stringify(expectedArgs),
+      `${scriptName} should pass npm exec arguments without shell parsing`
+    );
+  }
+}
+
+async function testMuseboardBrandContract() {
+  const packageJson = JSON.parse(await fs.readFile(path.join(process.cwd(), "package.json"), "utf8"));
+  const manifest = JSON.parse(await fs.readFile(path.join(process.cwd(), ".codex-plugin", "plugin.json"), "utf8"));
+  const mcp = JSON.parse(await fs.readFile(path.join(process.cwd(), ".mcp.json"), "utf8"));
+  const rootSkill = await fs.readFile(path.join(process.cwd(), "SKILL.md"), "utf8");
+  const agentMetadata = await fs.readFile(path.join(process.cwd(), "agents", "openai.yaml"), "utf8");
+  const html = await fs.readFile(path.join(process.cwd(), "public", "index.html"), "utf8");
+
+  assertEqual(packageJson.name, "museboard", "npm package should use the Museboard identifier");
+  assertEqual(packageJson.bin?.museboard, "./bin/museboard.mjs", "npm package should expose the Museboard CLI");
+  assertEqual(packageJson.repository?.url, "https://github.com/joelam-byte/museboard-next.git", "npm package should point at the Museboard Next repository");
+  assertEqual(manifest.name, "museboard", "plugin manifest should use the Museboard identifier");
+  assertEqual(manifest.interface?.displayName, "Museboard", "plugin manifest should show the Museboard brand");
+  assertEqual(manifest.repository, "https://github.com/joelam-byte/museboard-next.git", "plugin manifest should point at the Museboard Next repository");
+  assert(Boolean(mcp.mcpServers?.museboard), "MCP config should expose the Museboard server name");
+  assert(!mcp.mcpServers?.["codex-canvas"], "MCP config should not expose the upstream server name");
+  assert(/^---\s*\r?\nname: museboard\s*$/m.test(rootSkill), "root skill should use the Museboard skill name");
+  assert(agentMetadata.includes('display_name: "Museboard"'), "skill metadata should show the Museboard brand");
+  assert(html.includes("<title>Museboard</title>"), "browser canvas should show the Museboard title");
+
+  const { stdout } = await execFileAsync(process.execPath, [path.join(process.cwd(), "bin", "museboard.mjs"), "help"], {
+    cwd: process.cwd(),
+    windowsHide: true
+  });
+  assert(stdout.includes("Museboard"), "CLI help should show the Museboard brand");
+  assert(stdout.includes("museboard open"), "CLI help should use the Museboard command name");
 }
 
 async function testObjectPatchSanitization() {
@@ -1128,7 +1228,7 @@ async function testAppUpdateRequestSecurity() {
 
     const registryResponse = await fetch(`${base}api/projects`);
     const registry = await registryResponse.json();
-    assertEqual(registry.server?.name, "codex-canvas", "server metadata should identify the shutdown target");
+    assertEqual(registry.server?.name, "museboard", "server metadata should identify the shutdown target");
     assertEqual(registry.server?.protocolVersion, 1, "server metadata should expose the restart handshake version");
     if (!registry.server?.instanceId) throw new Error("server metadata should expose a per-process instance id");
 
@@ -1725,7 +1825,7 @@ async function testMcpCanvasStatus() {
     });
     openedCanvasUrl = opened.structuredContent?.url || null;
     const openedText = opened.content?.find((item) => item.type === "text")?.text || "";
-    if (!/Codex-Canvas is available: \[Open Codex-Canvas\]\(http:\/\/127\.0\.0\.1:\d+\/\?project=[^)]+\)/.test(openedText)) {
+    if (!/Museboard is available: \[Open Museboard\]\(http:\/\/127\.0\.0\.1:\d+\/\?project=[^)]+\)/.test(openedText)) {
       throw new Error("MCP open_canvas should return a clickable Markdown link, not only a bare URL.");
     }
     assertEqual(opened.structuredContent?.url?.startsWith("http://127.0.0.1:"), true, "MCP open_canvas should keep the raw URL in structured content");
@@ -2055,7 +2155,7 @@ async function testPackageOptionalDependencyScripts() {
   }
   assertEqual(
     packageJson.scripts?.["doctor:deps"],
-    "node ./bin/codex-canvas.mjs doctor-deps --json",
+    "node ./bin/museboard.mjs doctor-deps --json",
     "package.json should expose a non-installing optional dependency doctor script"
   );
   assertEqual(
@@ -2082,7 +2182,7 @@ async function testPluginPackageManifest() {
   }
   const mcpPath = path.join(process.cwd(), manifest.mcpServers);
   const mcpConfig = JSON.parse(await fs.readFile(mcpPath, "utf8"));
-  const server = mcpConfig.mcpServers?.["codex-canvas"];
+  const server = mcpConfig.mcpServers?.museboard;
   assertEqual(server?.command, "node", "MCP config should run through node");
   assertEqual(server?.cwd, ".", "MCP config should run from the plugin root");
   if (!server?.args?.includes("./src/mcp-server.mjs")) {
@@ -2102,7 +2202,7 @@ async function testPluginPackageManifest() {
     ".mcp.json",
     "INSTALL.md",
     "assets/icon.png",
-    "bin/codex-canvas.mjs",
+    "bin/museboard.mjs",
     "public/app.js",
     "public/canvas-history.js",
     "scripts/install-personal-plugin.mjs",
@@ -2124,7 +2224,7 @@ async function testPluginPackageManifest() {
   if (!canvasSkill.includes("Do not rely on the user clicking a printed URL")) {
     throw new Error("canvas skill should avoid printed URL click fallback because it opens the default browser.");
   }
-  if (!canvasSkill.includes("[Open Codex-Canvas](<url>)")) {
+  if (!canvasSkill.includes("[Open Museboard](<url>)")) {
     throw new Error("canvas skill should tell agents to present returned canvas URLs as Markdown links.");
   }
 
@@ -2196,17 +2296,17 @@ async function writeNodeExecutable(executablePath, source) {
 async function writeMinimalPluginPackage(rootDir, { version = "0.1.1", pluginVersion = `${version}+test` } = {}) {
   await fs.mkdir(path.join(rootDir, ".codex-plugin"), { recursive: true });
   await fs.writeFile(path.join(rootDir, "package.json"), `${JSON.stringify({
-    name: "codex-canvas",
+    name: "museboard",
     version,
     repository: {
       type: "git",
-      url: "https://github.com/Xiangyu-CAS/codex-canvas.git"
+      url: "https://github.com/joelam-byte/museboard-next.git"
     }
   }, null, 2)}\n`);
   await fs.writeFile(path.join(rootDir, ".codex-plugin", "plugin.json"), `${JSON.stringify({
-    name: "codex-canvas",
+    name: "museboard",
     version: pluginVersion,
-    repository: "https://github.com/Xiangyu-CAS/codex-canvas.git"
+    repository: "https://github.com/joelam-byte/museboard-next.git"
   }, null, 2)}\n`);
 }
 
@@ -2287,21 +2387,21 @@ async function testPersonalPluginInstaller() {
     });
     const result = JSON.parse(stdout);
     assertEqual(result.ok, true, "personal plugin installer should report success");
-    assertEqual(result.sourcePath, "./plugins/codex-canvas", "personal plugin installer should use the marketplace-relative plugin path");
+    assertEqual(result.sourcePath, "./plugins/museboard", "personal plugin installer should use the marketplace-relative plugin path");
     assertEqual(result.optionalDependencies?.ocr?.skipped, true, "personal plugin installer should report skipped OCR install when disabled");
   }
 
   const marketplace = JSON.parse(await fs.readFile(marketplacePath, "utf8"));
-  const agentEntries = marketplace.plugins.filter((plugin) => plugin.name === "codex-canvas");
-  assertEqual(agentEntries.length, 1, "personal plugin installer should keep one codex-canvas entry after repeated runs");
+  const agentEntries = marketplace.plugins.filter((plugin) => plugin.name === "museboard");
+  assertEqual(agentEntries.length, 1, "personal plugin installer should keep one museboard entry after repeated runs");
   assertEqual(agentEntries[0].source?.source, "local", "personal plugin entry should use a local source");
-  assertEqual(agentEntries[0].source?.path, "./plugins/codex-canvas", "personal plugin entry should point at the deterministic link");
+  assertEqual(agentEntries[0].source?.path, "./plugins/museboard", "personal plugin entry should point at the deterministic link");
   assertEqual(agentEntries[0].policy?.installation, "AVAILABLE", "personal plugin entry should be installable");
   if (!marketplace.plugins.some((plugin) => plugin.name === "other-plugin")) {
     throw new Error("personal plugin installer should preserve existing marketplace plugins.");
   }
 
-  const linkPath = path.join(tmp, "plugins", "codex-canvas");
+  const linkPath = path.join(tmp, "plugins", "museboard");
   const linkedRealPath = await fs.realpath(linkPath);
   const repoRealPath = await fs.realpath(process.cwd());
   assertEqual(linkedRealPath, repoRealPath, "personal plugin link should resolve to this repository");
@@ -2309,7 +2409,7 @@ async function testPersonalPluginInstaller() {
   const aliasTmp = await fs.mkdtemp(path.join(os.tmpdir(), "codex-canvas-personal-plugin-alias-"));
   const aliasPath = path.join(aliasTmp, "repo-alias");
   const aliasHome = path.join(aliasTmp, "home");
-  const aliasLinkPath = path.join(aliasHome, "plugins", "codex-canvas");
+  const aliasLinkPath = path.join(aliasHome, "plugins", "museboard");
   const linkType = process.platform === "win32" ? "junction" : "dir";
   await fs.symlink(process.cwd(), aliasPath, linkType);
   await fs.mkdir(path.dirname(aliasLinkPath), { recursive: true });
@@ -2331,7 +2431,7 @@ async function testPersonalPluginInstaller() {
   assertEqual(aliasLinkedRealPath, repoRealPath, "personal plugin installer should accept existing links that resolve to this repository");
 
   const blockedTmp = await fs.mkdtemp(path.join(os.tmpdir(), "codex-canvas-personal-plugin-blocked-"));
-  const blockedLinkPath = path.join(blockedTmp, "plugins", "codex-canvas");
+  const blockedLinkPath = path.join(blockedTmp, "plugins", "museboard");
   await fs.mkdir(blockedLinkPath, { recursive: true });
   const blocked = await execFileAsync(process.execPath, [
     path.join(process.cwd(), "scripts", "install-personal-plugin.mjs"),
@@ -2415,7 +2515,7 @@ async function testAppUpdateStrategy() {
   assertEqual(plain.canUpdate, false, "plain package installs should not claim automatic git updates");
   assertEqual(plain.blockedReason, "not-git", "plain package installs should report the non-git update blocker");
   assertEqual(plain.installKind, "package", "plain package installs should report package install kind");
-  if (!plain.manualCommand?.includes("github.com/Xiangyu-CAS/codex-canvas.git")) {
+  if (!plain.manualCommand?.includes("github.com/joelam-byte/museboard-next.git")) {
     throw new Error("plain package update status should suggest the configured GitHub repository.");
   }
 
@@ -2442,14 +2542,14 @@ async function testAppUpdateStrategy() {
   const releaseArchiveSha256 = "a".repeat(64);
   const releaseManifestText = JSON.stringify({
     schemaVersion: 1,
-    name: "codex-canvas",
+    name: "museboard",
     version: "0.1.2",
     tag: "v0.1.2",
     channel: "stable",
     commit: publishedRelease.commit,
     artifacts: {
       universal: {
-        file: "codex-canvas-v0.1.2.tgz",
+        file: "museboard-v0.1.2.tgz",
         sha256: releaseArchiveSha256
       }
     }
@@ -2463,10 +2563,10 @@ async function testAppUpdateStrategy() {
         tag_name: "v0.1.2",
         draft: false,
         prerelease: false,
-        html_url: "https://github.com/Xiangyu-CAS/codex-canvas/releases/tag/v0.1.2",
+        html_url: "https://github.com/joelam-byte/museboard-next/releases/tag/v0.1.2",
         published_at: "2026-07-10T00:00:00Z",
         assets: [
-          { name: "codex-canvas-v0.1.2.tgz", state: releaseAssetsReady ? "uploaded" : "new", size: 123, browser_download_url: "https://example.invalid/codex-canvas.tgz" },
+          { name: "museboard-v0.1.2.tgz", state: releaseAssetsReady ? "uploaded" : "new", size: 123, browser_download_url: "https://example.invalid/museboard.tgz" },
           { name: "release-manifest.json", state: "uploaded", size: releaseManifestText.length, browser_download_url: "https://example.invalid/release-manifest.json" },
           { name: "SHA256SUMS", state: "uploaded", size: 200, browser_download_url: "https://example.invalid/SHA256SUMS" }
         ]
@@ -2477,7 +2577,7 @@ async function testAppUpdateStrategy() {
     }
     if (value === "https://example.invalid/SHA256SUMS") {
       return new Response([
-        `${releaseArchiveSha256}  codex-canvas-v0.1.2.tgz`,
+        `${releaseArchiveSha256}  museboard-v0.1.2.tgz`,
         `${releaseManifestSha256}  release-manifest.json`,
         ""
       ].join("\n"), { status: 200, headers: { "content-type": "text/plain" } });
@@ -2556,7 +2656,7 @@ async function testAppUpdateCacheReinstall() {
   const fixture = await createUpdateGitFixture();
   const publishedRelease = await publishUpdateFixtureRelease(fixture, "0.1.2");
   const fakeHome = path.join(fixture.tmp, "fake-home");
-  const oldCache = path.join(fakeHome, ".codex", "plugins", "cache", "personal", "codex-canvas", "0.1.1");
+  const oldCache = path.join(fakeHome, ".codex", "plugins", "cache", "personal", "museboard", "0.1.1");
   const statePath = path.join(fakeHome, "plugin-state.json");
   const fakeCodex = path.join(fixture.tmp, process.platform === "win32" ? "codex.cmd" : "codex");
   await writeMinimalPluginPackage(oldCache);
@@ -2577,7 +2677,7 @@ async function testAppUpdateCacheReinstall() {
       rootDir: oldCache,
       releaseProvider: async () => publishedRelease
     });
-    const newCache = path.join(fakeHome, ".codex", "plugins", "cache", "personal", "codex-canvas", "0.1.2");
+    const newCache = path.join(fakeHome, ".codex", "plugins", "cache", "personal", "museboard", "0.1.2");
     assertEqual(result.updated, true, "cache updater should complete after Codex activates the release");
     assertEqual(result.reinstalled, true, "cache updater should reinstall through the discovered marketplace");
     assertEqual(await fs.realpath(result.installedPath), await fs.realpath(newCache), "cache updater should return the new Codex cache root");
@@ -2601,8 +2701,8 @@ const state = JSON.parse(await fs.readFile(statePath, "utf8"));
 const args = process.argv.slice(2);
 if (args[0] === "plugin" && args[1] === "list") {
   console.log(JSON.stringify({ installed: [{
-    pluginId: "codex-canvas@personal",
-    name: "codex-canvas",
+    pluginId: "museboard@personal",
+    name: "museboard",
     marketplaceName: "personal",
     version: state.version,
     installed: true,
@@ -2621,8 +2721,8 @@ if (args[0] === "plugin" && args[1] === "add") {
   }
   await fs.writeFile(statePath, JSON.stringify({ ...state, installedPath: nextPath, version: packageJson.version }));
   console.log(JSON.stringify({
-    pluginId: "codex-canvas@personal",
-    name: "codex-canvas",
+    pluginId: "museboard@personal",
+    name: "museboard",
     marketplaceName: "personal",
     version: packageJson.version,
     installedPath: nextPath,
@@ -2644,36 +2744,36 @@ async function fileExistsForSmoke(filePath) {
 }
 
 async function testCliCollectHelp() {
-  const { stdout } = await execFileAsync(process.execPath, [path.join(process.cwd(), "bin", "codex-canvas.mjs"), "help"], {
+  const { stdout } = await execFileAsync(process.execPath, [path.join(process.cwd(), "bin", "museboard.mjs"), "help"], {
     cwd: process.cwd(),
     maxBuffer: 1024 * 1024,
     windowsHide: true
   });
-  if (!stdout.includes("codex-canvas open [--project <dir>] [--host 127.0.0.1] [--port 43217] [--thread-id <codex-thread-id>]")) {
+  if (!stdout.includes("museboard open [--project <dir>] [--host 127.0.0.1] [--port 43217] [--thread-id <codex-thread-id>]")) {
     throw new Error("CLI help should document that active opens can opt out of the default update check.");
   }
   if (!stdout.includes("the loaded UI checks for releases in the background")) {
     throw new Error("CLI help should describe the non-mutating open-time release check.");
   }
-  if (!stdout.includes("codex-canvas import <image-path> [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--prompt <text>] [--name <name>]")) {
+  if (!stdout.includes("museboard import <image-path> [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--prompt <text>] [--name <name>]")) {
     throw new Error("CLI help should document import canvas scope flags.");
   }
-  if (!stdout.includes("codex-canvas collect [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--from <dir,dir>] [--since-minutes 120] [--limit 20]")) {
+  if (!stdout.includes("museboard collect [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--from <dir,dir>] [--since-minutes 120] [--limit 20]")) {
     throw new Error("CLI help should document collect flags.");
   }
-  if (!stdout.includes("codex-canvas search [query] [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--type image|text|drawing|annotation|job] [--limit 20] [--json]")) {
+  if (!stdout.includes("museboard search [query] [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--type image|text|drawing|annotation|job] [--limit 20] [--json]")) {
     throw new Error("CLI help should document search flags.");
   }
-  if (!stdout.includes("codex-canvas prompts [query] [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--limit 20] [--json]")) {
+  if (!stdout.includes("museboard prompts [query] [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--limit 20] [--json]")) {
     throw new Error("CLI help should document prompt history flags.");
   }
-  if (!stdout.includes("codex-canvas versions [query] [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--group-by sourceObjectId|batchId|layoutMode|prompt] [--limit 20] [--object-limit 20] [--json]")) {
+  if (!stdout.includes("museboard versions [query] [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--group-by sourceObjectId|batchId|layoutMode|prompt] [--limit 20] [--object-limit 20] [--json]")) {
     throw new Error("CLI help should document version grouping flags.");
   }
-  if (!stdout.includes("codex-canvas status [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--json]")) {
+  if (!stdout.includes("museboard status [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--json]")) {
     throw new Error("CLI help should document status canvas scope flags.");
   }
-  if (!stdout.includes("--canvas-id selects an explicit Codex-Canvas canvas scope and overrides --thread-id.")) {
+  if (!stdout.includes("--canvas-id selects an explicit Museboard canvas scope and overrides --thread-id.")) {
     throw new Error("CLI help should document explicit canvas scope precedence.");
   }
   if (!stdout.includes("Import recent images from the bound thread directory, or explicit --from recovery roots.")) {
@@ -3400,7 +3500,7 @@ async function testQuickEditAnnotations() {
     if (
       !/image 1 is the clean source/i.test(prompt)
       || !/image 2 is the annotation board/i.test(prompt)
-      || !/Codex-Canvas annotation\/mask details/.test(prompt)
+      || !/Museboard annotation\/mask details/.test(prompt)
       || !/red \(#d93025\) drawing mask/.test(prompt)
       || !/blue \(#1a73e8\) text label: "remove this"/.test(prompt)
       || !/green \(#188038\) text label: "move this copy outside"/.test(prompt)
@@ -4098,7 +4198,7 @@ async function runCliJson(args, options = {}) {
 }
 
 async function runCli(args, options = {}) {
-  return await execFileAsync(process.execPath, [path.join(process.cwd(), "bin", "codex-canvas.mjs"), ...args], {
+  return await execFileAsync(process.execPath, [path.join(process.cwd(), "bin", "museboard.mjs"), ...args], {
     cwd: process.cwd(),
     env: options.env || process.env,
     maxBuffer: 1024 * 1024,
@@ -4396,6 +4496,10 @@ function assertEqual(actual, expected, message) {
   if (actual !== expected) {
     throw new Error(`${message}. Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}.`);
   }
+}
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
 }
 
 async function assertRejects(fn, expectedMessage, message, expected = {}) {

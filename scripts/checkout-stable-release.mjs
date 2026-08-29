@@ -57,7 +57,7 @@ console.log(JSON.stringify({
 }, null, 2));
 
 function parseArgs(args) {
-  const options = { remote: "origin", branch: "codex-canvas-stable" };
+  const options = { remote: "origin", branch: "museboard-stable" };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--remote" || arg === "--branch") {
@@ -77,9 +77,9 @@ function parseArgs(args) {
 
 async function requireCleanCheckout() {
   const root = (await git(["rev-parse", "--show-toplevel"])).stdout.trim();
-  if (path.resolve(root) !== rootDir) throw new Error("Stable checkout must run from the Codex-Canvas repository root.");
+  if (path.resolve(root) !== rootDir) throw new Error("Stable checkout must run from the Museboard repository root.");
   const status = (await git(["status", "--porcelain"])).stdout.trim();
-  if (status) throw new Error("Codex-Canvas source has local changes; use a fresh clone for the stable release checkout.");
+  if (status) throw new Error("Museboard source has local changes; use a fresh clone for the stable release checkout.");
 }
 
 async function defaultRemoteBranch(remote) {
@@ -98,11 +98,11 @@ async function fetchPublishedRelease(repository) {
       signal,
       headers: {
         accept: "application/vnd.github+json",
-        "user-agent": "codex-canvas-stable-checkout",
+      "user-agent": "museboard-stable-checkout",
         "x-github-api-version": "2022-11-28"
       }
     });
-    if (response.status === 404) throw new Error("No published Codex-Canvas GitHub Release is available yet.");
+  if (response.status === 404) throw new Error("No published Museboard GitHub Release is available yet.");
     if (!response.ok) throw new Error(`GitHub release API returned ${response.status}.`);
     const release = await response.json();
     if (release?.draft || release?.prerelease || !/^v\d+\.\d+\.\d+$/.test(release?.tag_name || "")) {
@@ -110,7 +110,7 @@ async function fetchPublishedRelease(repository) {
     }
 
     const version = release.tag_name.slice(1);
-    const archiveName = `codex-canvas-${release.tag_name}.tgz`;
+  const archiveName = `museboard-${release.tag_name}.tgz`;
     const assets = new Map((Array.isArray(release.assets) ? release.assets : []).map((asset) => [asset?.name, asset]));
     const archiveAsset = assets.get(archiveName);
     const manifestAsset = assets.get("release-manifest.json");
@@ -120,8 +120,8 @@ async function fetchPublishedRelease(repository) {
     }
 
     const [manifestResponse, checksumsResponse] = await Promise.all([
-      fetchTextResponse(manifestAsset.browser_download_url, { signal, headers: { "user-agent": "codex-canvas-stable-checkout" } }),
-      fetchTextResponse(checksumsAsset.browser_download_url, { signal, headers: { "user-agent": "codex-canvas-stable-checkout" } })
+    fetchTextResponse(manifestAsset.browser_download_url, { signal, headers: { "user-agent": "museboard-stable-checkout" } }),
+    fetchTextResponse(checksumsAsset.browser_download_url, { signal, headers: { "user-agent": "museboard-stable-checkout" } })
     ]);
     if (!manifestResponse.ok || !checksumsResponse.ok) throw new Error(`Could not download release metadata for ${release.tag_name}.`);
     const manifestText = await manifestResponse.text();
@@ -136,7 +136,7 @@ async function fetchPublishedRelease(repository) {
     const artifact = manifest?.artifacts?.universal;
     if (
       manifest?.schemaVersion !== 1
-      || manifest?.name !== "codex-canvas"
+    || manifest?.name !== "museboard"
       || manifest?.version !== version
       || manifest?.tag !== release.tag_name
       || manifest?.channel !== "stable"

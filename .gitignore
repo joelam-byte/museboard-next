@@ -20,3 +20,8 @@ venv/
 dist/
 build/
 coverage/
+
+# Local worktrees and specification-driven development scratch files
+.worktrees/
+work/
+.agents/

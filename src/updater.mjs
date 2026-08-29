@@ -154,8 +154,8 @@ async function performUpdate({
       ...before,
       updated: false,
       output: before.latestVersion
-        ? `Codex-Canvas ${before.installedVersion} is the latest published release.`
-        : "Codex-Canvas has no published release yet."
+        ? `Museboard ${before.installedVersion} is the latest published release.`
+        : "Museboard has no published release yet."
     };
   }
 
@@ -163,7 +163,7 @@ async function performUpdate({
     throw updateError({
       ...before,
       blockedReason: "no-release",
-      blockedMessage: "No stable Codex-Canvas release is available."
+      blockedMessage: "No stable Museboard release is available."
     });
   }
 
@@ -237,7 +237,7 @@ async function performUpdate({
       throw updateError({
         ...before,
         blockedReason: "plugin-reinstall-invalid",
-        blockedMessage: `Post-update verification still found Codex-Canvas ${after.installedVersion || "with an unknown version"}.`
+        blockedMessage: `Post-update verification still found Museboard ${after.installedVersion || "with an unknown version"}.`
       });
     }
     return {
@@ -269,7 +269,7 @@ async function readPackageInfo(rootDir) {
     pluginVersion = null;
   }
   return {
-    name: packageJson.name || "codex-canvas",
+    name: packageJson.name || "museboard",
     version: packageJson.version || "0.0.0",
     pluginVersion,
     repository: repositoryUrl(packageJson.repository) || pluginRepository
@@ -396,7 +396,7 @@ async function publishedStableRelease({ git, rootDir, publishedRelease }) {
 
 async function githubReleaseProvider({ repository, checkRemote, timeoutMs = githubReleaseTimeoutMs }) {
   const slug = githubRepositorySlug(repository);
-  if (!slug) throw new Error("Codex-Canvas repository is not a supported GitHub URL.");
+  if (!slug) throw new Error("Museboard repository is not a supported GitHub URL.");
 
   const cached = publishedReleaseCache.get(slug);
   if (!checkRemote) return cached?.release || null;
@@ -407,7 +407,7 @@ async function githubReleaseProvider({ repository, checkRemote, timeoutMs = gith
       signal,
       headers: {
         accept: "application/vnd.github+json",
-        "user-agent": "codex-canvas-updater",
+        "user-agent": "museboard-updater",
         "x-github-api-version": "2022-11-28"
       }
     });
@@ -427,7 +427,7 @@ async function githubReleaseProvider({ repository, checkRemote, timeoutMs = gith
     }
 
     const version = versionString(parsed);
-    const archiveName = `codex-canvas-v${version}.tgz`;
+    const archiveName = `museboard-v${version}.tgz`;
     const assets = new Map((Array.isArray(release.assets) ? release.assets : []).map((asset) => [asset?.name, asset]));
     const archiveAsset = assets.get(archiveName);
     const manifestAsset = assets.get("release-manifest.json");
@@ -442,14 +442,14 @@ async function githubReleaseProvider({ repository, checkRemote, timeoutMs = gith
         signal,
         headers: {
           accept: "application/json",
-          "user-agent": "codex-canvas-updater"
+          "user-agent": "museboard-updater"
         }
       }),
       fetchTextResponse(checksumsAsset.browser_download_url, {
         signal,
         headers: {
           accept: "text/plain",
-          "user-agent": "codex-canvas-updater"
+          "user-agent": "museboard-updater"
         }
       })
     ]);
@@ -472,7 +472,7 @@ async function githubReleaseProvider({ repository, checkRemote, timeoutMs = gith
     const manifestSha256 = createHash("sha256").update(manifestText).digest("hex");
     if (
       manifest?.schemaVersion !== 1
-      || manifest?.name !== "codex-canvas"
+      || manifest?.name !== "museboard"
       || manifest?.version !== version
       || manifest?.tag !== release.tag_name
       || manifest?.channel !== "stable"
@@ -711,21 +711,21 @@ function updateBlockedReason({ git, install, installKind, release, releaseError,
 
 function blockedMessageFor(reason, { git, release, releaseError } = {}) {
   const messages = {
-    "not-git": "The configured Codex-Canvas source is not a Git checkout, so automatic release updates are unavailable.",
-    "source-not-found": "Could not locate the installed Codex-Canvas marketplace source. Reinstall the personal plugin manually.",
-    "plugin-reinstall-unavailable": "Could not identify the installed Codex-Canvas marketplace, so the versioned plugin cache cannot be refreshed safely.",
-    "detached-head": "The Codex-Canvas source is at a detached Git HEAD; switch it to its tracked branch before updating.",
-    "dirty-worktree": "The Codex-Canvas source has local changes; commit or stash them before updating.",
-    "no-upstream": "The Codex-Canvas source branch has no remote branch to verify published release tags against.",
-    "local-ahead": "The Codex-Canvas source has local commits; push or resolve them before installing a release.",
-    "remote-check-failed": `Could not refresh Codex-Canvas release tags${git?.fetchError ? `: ${git.fetchError}` : "."}`,
+    "not-git": "The configured Museboard source is not a Git checkout, so automatic release updates are unavailable.",
+    "source-not-found": "Could not locate the installed Museboard marketplace source. Reinstall the personal plugin manually.",
+    "plugin-reinstall-unavailable": "Could not identify the installed Museboard marketplace, so the versioned plugin cache cannot be refreshed safely.",
+    "detached-head": "The Museboard source is at a detached Git HEAD; switch it to its tracked branch before updating.",
+    "dirty-worktree": "The Museboard source has local changes; commit or stash them before updating.",
+    "no-upstream": "The Museboard source branch has no remote branch to verify published release tags against.",
+    "local-ahead": "The Museboard source has local commits; push or resolve them before installing a release.",
+    "remote-check-failed": `Could not refresh Museboard release tags${git?.fetchError ? `: ${git.fetchError}` : "."}`,
     "release-check-failed": `Could not verify the latest published GitHub Release${releaseError ? `: ${releaseError}` : "."}`,
     "release-version-mismatch": `Published tag ${release?.tag || "(unknown)"} does not match its package and plugin versions.`,
-    "release-not-fast-forward": "The Codex-Canvas source is not an ancestor of the latest release; automatic update would overwrite or mix local code.",
+    "release-not-fast-forward": "The Museboard source is not an ancestor of the latest release; automatic update would overwrite or mix local code.",
     "plugin-reinstall-invalid": "Codex did not activate the expected plugin release.",
-    "no-release": "No stable Codex-Canvas release is available."
+    "no-release": "No stable Museboard release is available."
   };
-  return messages[reason] || "Codex-Canvas cannot be updated automatically from this install.";
+  return messages[reason] || "Museboard cannot be updated automatically from this install.";
 }
 
 function manualCommandFor({ sourceRoot, git, install, repository, release, blockedReason }) {
@@ -735,14 +735,14 @@ function manualCommandFor({ sourceRoot, git, install, repository, release, block
       `git -C ${quoteShell(sourceRoot)} merge --ff-only ${quoteShell(release.tag)}`
     ];
     if (install?.marketplaceName) {
-      commands.push(`codex plugin add ${quoteShell(`codex-canvas@${install.marketplaceName}`)}`);
+      commands.push(`codex plugin add ${quoteShell(`museboard@${install.marketplaceName}`)}`);
     }
     return commands.join("\n");
   }
   if (["dirty-worktree", "local-ahead", "release-not-fast-forward"].includes(blockedReason)) {
     return `git -C ${quoteShell(sourceRoot)} status --short --branch`;
   }
-  if (repository) return `git clone ${quoteShell(repository)} codex-canvas`;
+  if (repository) return `git clone ${quoteShell(repository)} museboard`;
   return null;
 }
 
@@ -827,7 +827,7 @@ function quoteShell(value) {
 }
 
 function updateError(details) {
-  const error = new Error(details.blockedMessage || "Codex-Canvas cannot be updated automatically from this install.");
+  const error = new Error(details.blockedMessage || "Museboard cannot be updated automatically from this install.");
   error.statusCode = 409;
   error.code = details.blockedReason || "update-unavailable";
   error.details = details;
@@ -874,19 +874,19 @@ async function acquireCrossProcessUpdateLock(sourceRoot) {
       if (attempt === 0 && await removeStaleUpdateLock()) {
         continue;
       }
-      const conflict = new Error("Another Codex-Canvas process is already installing an update. Wait for it to finish and try again.");
+      const conflict = new Error("Another Museboard process is already installing an update. Wait for it to finish and try again.");
       conflict.statusCode = 409;
       conflict.code = "update-in-progress";
       throw conflict;
     }
   }
-  if (!handle) throw new Error("Could not acquire the Codex-Canvas update lock.");
+  if (!handle) throw new Error("Could not acquire the Museboard update lock.");
   try {
     await handle.writeFile(`${JSON.stringify({ token, pid: process.pid, sourceRoot: normalizedSource, startedAt: new Date().toISOString() })}\n`);
     const activeLeases = await activeOperationLeases();
     if (activeLeases.length > 0) {
       const kinds = [...new Set(activeLeases.map((lease) => lease.kind).filter(Boolean))].join(", ");
-      const error = new Error(`Wait for active Codex-Canvas background operations to finish before updating${kinds ? ` (${kinds})` : ""}.`);
+      const error = new Error(`Wait for active Museboard background operations to finish before updating${kinds ? ` (${kinds})` : ""}.`);
       error.statusCode = 409;
       error.code = "active-operations";
       throw error;

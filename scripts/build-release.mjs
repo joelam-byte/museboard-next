@@ -245,7 +245,7 @@ function validatePackedFiles(files) {
     "package.json",
     ".codex-plugin/plugin.json",
     ".mcp.json",
-    "bin/codex-canvas.mjs",
+    "bin/museboard.mjs",
     "public/app.js",
     "public/canvas-history.js",
     "public/index.html",

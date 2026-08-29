@@ -1,15 +1,15 @@
 {
-  "name": "codex-canvas",
+  "name": "museboard",
   "version": "0.3.1",
-  "description": "Local infinite canvas plugin for Codex image workflows.",
+  "description": "Local infinite canvas plugin for Codex image workflows, built from Codex-Canvas.",
   "type": "module",
-  "homepage": "https://github.com/Xiangyu-CAS/codex-canvas",
+  "homepage": "https://github.com/joelam-byte/museboard-next",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Xiangyu-CAS/codex-canvas.git"
+    "url": "https://github.com/joelam-byte/museboard-next.git"
   },
   "bin": {
-    "codex-canvas": "./bin/codex-canvas.mjs"
+    "museboard": "./bin/museboard.mjs"
   },
   "files": [
     ".codex-plugin/",
@@ -40,20 +40,21 @@
     "src/"
   ],
   "scripts": {
-    "setup:ocr": "node ./bin/codex-canvas.mjs setup-ocr",
-    "setup:image-deps": "node ./bin/codex-canvas.mjs setup-image-deps",
-    "setup:deps": "node ./bin/codex-canvas.mjs setup-deps",
+    "setup:ocr": "node ./bin/museboard.mjs setup-ocr",
+    "setup:image-deps": "node ./bin/museboard.mjs setup-image-deps",
+    "setup:deps": "node ./bin/museboard.mjs setup-deps",
     "checkout:stable": "node ./scripts/checkout-stable-release.mjs",
     "install:personal": "node ./scripts/install-personal-plugin.mjs",
     "install:dev-cache": "node ./scripts/link-dev-plugin-cache.mjs",
-    "doctor:ocr": "node ./bin/codex-canvas.mjs doctor-ocr --json",
-    "doctor:image-deps": "node ./bin/codex-canvas.mjs doctor-image-deps --json",
-    "doctor:deps": "node ./bin/codex-canvas.mjs doctor-deps --json",
-    "start": "node ./bin/codex-canvas.mjs start",
-    "validate": "node ./bin/codex-canvas.mjs status --json",
+    "doctor:ocr": "node ./bin/museboard.mjs doctor-ocr --json",
+    "doctor:image-deps": "node ./bin/museboard.mjs doctor-image-deps --json",
+    "doctor:deps": "node ./bin/museboard.mjs doctor-deps --json",
+    "start": "node ./bin/museboard.mjs start",
+    "validate": "node ./bin/museboard.mjs status --json",
     "smoke": "node ./scripts/smoke.mjs",
     "smoke:visual": "node ./scripts/visual-smoke.mjs",
     "visual:regression": "node ./scripts/visual-regression.mjs",
+    "validate:contracts": "node ./scripts/validate-contracts.mjs",
     "verify:release": "node ./scripts/verify-release.mjs",
     "verify:archive": "node ./scripts/verify-release-archive.mjs",
     "build:release": "node ./scripts/build-release.mjs",
@@ -61,12 +62,13 @@
   },
   "keywords": [
     "codex",
+    "museboard",
     "plugin",
     "canvas",
     "imagegen"
   ],
   "author": {
-    "name": "Codex-Canvas Contributors"
+    "name": "Museboard Contributors"
   },
   "license": "MIT",
   "engines": {

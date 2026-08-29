@@ -56,7 +56,7 @@ let quickEditAutoColorPrevious = null;
 
 const translations = {
   en: {
-    codexCanvas: "Codex canvas",
+    codexCanvas: "Museboard canvas",
     canvasTools: "Canvas tools",
     canvasViewControls: "Canvas view controls",
     settings: "Settings",
@@ -211,7 +211,7 @@ const translations = {
     }
   },
   zh: {
-    codexCanvas: "Agent 画布",
+    codexCanvas: "Museboard 画布",
     canvasTools: "画布工具",
     canvasViewControls: "画布视图控制",
     settings: "设置",
@@ -2483,7 +2483,7 @@ function applyImageAnnotationMetadata(element, object) {
 
 function imageAnnotationLabel(object) {
   const parts = [
-    `Codex-Canvas image`,
+    `Museboard image`,
     `name: ${object.name || "Image"}`,
     `objectId: ${object.id}`,
     imageSizeLabel(object) ? `size: ${imageSizeLabel(object)}` : "",

@@ -15,7 +15,7 @@ const maxLimit = 100;
 const defaultSinceMinutes = 120;
 const defaultPort = 43217;
 const maxPort = 65535;
-const canvasServerName = "codex-canvas";
+const canvasServerName = "museboard";
 const canvasServerProtocolVersion = 1;
 
 export async function main(args, context = {}) {
@@ -34,7 +34,7 @@ export async function main(args, context = {}) {
     const autoCollect = options["no-auto-collect"] !== true;
     const chatThreadId = normalizeThreadId(optionValue(options, ["thread-id", "threadId"], "--thread-id") || environmentThreadId());
     const { url } = await createServer({ projectDir, host, port, autoCollect, chatThreadId });
-    console.log(`Codex-Canvas listening on ${url}`);
+    console.log(`Museboard listening on ${url}`);
     console.log(`Project: ${projectDir}`);
     console.log(`Auto-collect: ${autoCollect ? "enabled" : "disabled"}`);
     console.log(`Chat thread: ${chatThreadId || "(not bound)"}`);
@@ -214,9 +214,9 @@ export async function main(args, context = {}) {
     const runningServer = checkOnly ? null : await findRunningCanvasServer(projectDir);
     if (runningServer && !runningServer.compatible) {
       if (runningServer.reason === "unresponsive") {
-        throw new Error("A recorded Codex-Canvas server may still be running but is not responding. Close it or retry before installing an update.");
+        throw new Error("A recorded Museboard server may still be running but is not responding. Close it or retry before installing an update.");
       }
-      throw new Error("A legacy or different Codex-Canvas server is still running. Close that canvas before installing an update.");
+      throw new Error("A legacy or different Museboard server is still running. Close that canvas before installing an update.");
     }
     const result = checkOnly
       ? await appUpdateStatus({ checkRemote: true })
@@ -226,7 +226,7 @@ export async function main(args, context = {}) {
     if (flagEnabled(options.json)) {
       console.log(JSON.stringify(result, null, 2));
     } else if (checkOnly) {
-      console.log(`Codex-Canvas ${result.version}`);
+      console.log(`Museboard ${result.version}`);
       if (result.canUpdate) {
         console.log(`Update strategy: published release tags from ${result.git.remote}/${result.git.remoteBranch}.`);
       } else {
@@ -239,7 +239,7 @@ export async function main(args, context = {}) {
           : "No published release is available yet.");
       if (result.manualCommand) console.log(`Manual command: ${result.manualCommand}`);
     } else {
-      console.log(result.output || "Codex-Canvas update completed.");
+      console.log(result.output || "Museboard update completed.");
       console.log(`Installed version: ${result.installedVersion || result.version}`);
       if (result.releaseTag) console.log(`Release: ${result.releaseTag}`);
       console.log(`Current git head: ${result.git.head || "(unknown)"}`);
@@ -302,7 +302,7 @@ export async function main(args, context = {}) {
     return;
   }
 
-  throw usageError(`Unknown command: ${command}. Run "codex-canvas help" for usage.`);
+  throw usageError(`Unknown command: ${command}. Run "museboard help" for usage.`);
 }
 
 function parseOptions(args) {
@@ -402,7 +402,7 @@ async function waitForRuntime(projectDir, timeoutMs) {
     }
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
-  throw new Error("Codex-Canvas server did not start in time");
+  throw new Error("Museboard server did not start in time");
 }
 
 async function resolveCanvasOptions(projectDir, options = {}, runtime = null) {
@@ -433,12 +433,12 @@ async function openExistingCanvas(url, projectDir, { autoCollect, chatThreadId, 
     if (!serverInfoIsCompatible(registryInfo.server)) {
       const stopped = await stopStaleCanvasServer(url, registryInfo.server);
       if (!stopped) {
-        throw new Error("An older Codex-Canvas server is still using this port. Close its canvas or task, then open Codex-Canvas again.");
+        throw new Error("An older Museboard server is still using this port. Close its canvas or task, then open Museboard again.");
       }
       return null;
     }
     if (registryInfo.server.maintenance) {
-      throw new Error(`Codex-Canvas is preparing to ${registryInfo.server.maintenance}; wait a moment and open it again.`);
+      throw new Error(`Museboard is preparing to ${registryInfo.server.maintenance}; wait a moment and open it again.`);
     }
     const registered = await registerRemoteProject(url, projectDir, { autoCollect, chatThreadId });
     await writeRuntime(projectDir, registered.runtime);
@@ -446,7 +446,7 @@ async function openExistingCanvas(url, projectDir, { autoCollect, chatThreadId, 
   }
 
   if (allowLegacy && (await supportsProjectState(url) || await servesAgentCanvasApp(url))) {
-    throw new Error("A legacy Codex-Canvas server is still running. Close its canvas or task before opening this version.");
+    throw new Error("A legacy Museboard server is still running. Close its canvas or task before opening this version.");
   }
 
   return null;
@@ -552,9 +552,9 @@ async function updateThroughRunningServer(runningServer) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ expectedInstanceId: runningServer.server.instanceId })
   }, 300_000);
-  if (!response) throw new Error("The running Codex-Canvas server did not respond to the update request.");
+  if (!response) throw new Error("The running Museboard server did not respond to the update request.");
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || "The running Codex-Canvas server rejected the update request.");
+  if (!response.ok) throw new Error(payload.error || "The running Museboard server rejected the update request.");
   return payload;
 }
 
@@ -582,7 +582,7 @@ async function servesAgentCanvasApp(url) {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("text/html")) return false;
   const html = await response.text().catch(() => "");
-  return html.includes("<title>Codex-Canvas</title>");
+  return html.includes("<title>Museboard</title>") || html.includes("<title>Codex-Canvas</title>");
 }
 
 function apiUrl(baseUrl, pathname) {
@@ -616,11 +616,11 @@ async function registerRemoteProject(baseUrl, projectDir, { autoCollect = true, 
     body: JSON.stringify({ projectDir, autoCollect, chatThreadId })
   }, 2000);
   if (!response) {
-    throw new Error("Codex-Canvas server did not respond to project registration.");
+    throw new Error("Museboard server did not respond to project registration.");
   }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error || "Codex-Canvas server did not accept the project registration.");
+    throw new Error(payload.error || "Museboard server did not accept the project registration.");
   }
   const project = payload.project || {};
   return {
@@ -649,24 +649,24 @@ function environmentThreadId() {
 
 function printHelp() {
   console.log(`
-Codex-Canvas
+Museboard
 
 Usage:
-  codex-canvas open [--project <dir>] [--host 127.0.0.1] [--port 43217] [--thread-id <codex-thread-id>]
-  codex-canvas start [--project <dir>] [--host 127.0.0.1] [--port 43217] [--thread-id <codex-thread-id>] [--no-auto-collect]
-  codex-canvas import <image-path> [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--prompt <text>] [--name <name>]
-  codex-canvas collect [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--from <dir,dir>] [--since-minutes 120] [--limit 20]
-  codex-canvas search [query] [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--type image|text|drawing|annotation|job] [--limit 20] [--json]
-  codex-canvas prompts [query] [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--limit 20] [--json]
-  codex-canvas versions [query] [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--group-by sourceObjectId|batchId|layoutMode|prompt] [--limit 20] [--object-limit 20] [--json]
-  codex-canvas status [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--json]
-  codex-canvas update [--check] [--json]
-  codex-canvas setup-deps [--json]
-  codex-canvas setup-ocr [--optional] [--json]
-  codex-canvas setup-image-deps [--optional] [--json]
-  codex-canvas doctor-ocr [--json]
-  codex-canvas doctor-image-deps [--json]
-  codex-canvas doctor-deps [--json]
+  museboard open [--project <dir>] [--host 127.0.0.1] [--port 43217] [--thread-id <codex-thread-id>]
+  museboard start [--project <dir>] [--host 127.0.0.1] [--port 43217] [--thread-id <codex-thread-id>] [--no-auto-collect]
+  museboard import <image-path> [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--prompt <text>] [--name <name>]
+  museboard collect [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--from <dir,dir>] [--since-minutes 120] [--limit 20]
+  museboard search [query] [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--type image|text|drawing|annotation|job] [--limit 20] [--json]
+  museboard prompts [query] [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--limit 20] [--json]
+  museboard versions [query] [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--group-by sourceObjectId|batchId|layoutMode|prompt] [--limit 20] [--object-limit 20] [--json]
+  museboard status [--project <dir>] [--thread-id <id>] [--canvas-id <id>] [--json]
+  museboard update [--check] [--json]
+  museboard setup-deps [--json]
+  museboard setup-ocr [--optional] [--json]
+  museboard setup-image-deps [--optional] [--json]
+  museboard doctor-ocr [--json]
+  museboard doctor-image-deps [--json]
+  museboard doctor-deps [--json]
 
 Commands:
   open      Start or reuse the local server and print the canvas URL; the loaded UI checks for releases in the background.
@@ -677,7 +677,7 @@ Commands:
   prompts   List recent unique prompts from canvas objects.
   versions  Group canvas object version history by sourceObjectId, batchId, layoutMode, or prompt.
   status    Print current canvas runtime and object count.
-  update    Check for or install the latest published Codex-Canvas release.
+  update    Check for or install the latest published Museboard release.
   setup-ocr Explicitly install RapidOCR for local Edit Text recognition.
   setup-image-deps Explicitly install Pillow and numpy for Edit Elements local layer processing.
   setup-deps Explicitly install optional Python dependencies for OCR and Edit Elements.
@@ -687,7 +687,7 @@ Commands:
 
 Canvas scope:
   --thread-id selects the canvas and default generated_images/<thread-id> collection scope.
-  --canvas-id selects an explicit Codex-Canvas canvas scope and overrides --thread-id.
+  --canvas-id selects an explicit Museboard canvas scope and overrides --thread-id.
   --from selects explicit project-relative or absolute recovery roots and bypasses the default thread directory.
 `.trim());
 }

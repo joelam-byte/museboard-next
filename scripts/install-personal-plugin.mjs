@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { installRapidOcr } from "../src/ocr-setup.mjs";
 
-const pluginName = "codex-canvas";
+const pluginName = "museboard";
 const pluginCategory = "Productivity";
 const marketplaceName = "personal";
 
@@ -48,7 +48,7 @@ async function main() {
   if (options.json) {
     console.log(JSON.stringify(payload, null, 2));
   } else {
-    console.log(`Codex-Canvas personal plugin entry is available at ${marketplacePath}`);
+console.log(`Museboard personal plugin entry is available at ${marketplacePath}`);
     console.log(`Plugin link: ${linkPath} -> ${rootDir}`);
     console.log(`RapidOCR: ${ocr.message}`);
     if (!ocr.available) {

@@ -6,12 +6,14 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { addImage } from "../src/store.mjs";
 import { createServer as createAgentCanvasServer } from "../src/server.mjs";
+import { npmCliInvocation } from "./npm-cli.mjs";
+import { createFetchSafeTestServer } from "./test-server.mjs";
 
 const pngOne = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 const pngTwo = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFUlEQVR4nGO8Y6D6n4GBgYEJRIAwACHvAjSDKprFAAAAAElFTkSuQmCC";
 const baselineDir = path.join(process.cwd(), "scripts", "reference-screenshots");
 const updateBaselines = process.argv.includes("--update");
-const pixelThreshold = 0.012;
+const pixelThreshold = normalizePixelThreshold(process.env.CODEX_CANVAS_VISUAL_THRESHOLD);
 const channelTolerance = 10;
 const viewports = [
   { name: "desktop", width: 1280, height: 800, deviceScaleFactor: 1 },
@@ -20,6 +22,15 @@ const viewports = [
 const screenshotCases = ["discovery", "selected", "expand", "crop", "compare", "overlay", "text-edit"];
 const caseFilter = String(process.env.CODEX_CANVAS_VISUAL_CASE || "").trim();
 let visualProjectRegistryPath = null;
+
+function normalizePixelThreshold(value) {
+  if (value === undefined || value === "") return 0.012;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    throw new Error("CODEX_CANVAS_VISUAL_THRESHOLD must be a number from 0 to 1.");
+  }
+  return parsed;
+}
 
 async function main() {
   const playwright = await loadPlaywright();
@@ -108,7 +119,8 @@ async function captureReferenceViewport(browser, viewport, screenshotCase) {
     viewport: { width: viewport.width, height: viewport.height },
     isMobile: Boolean(viewport.isMobile),
     hasTouch: Boolean(viewport.hasTouch),
-    deviceScaleFactor: viewport.deviceScaleFactor
+    deviceScaleFactor: viewport.deviceScaleFactor,
+    locale: "en-US"
   });
   const page = await context.newPage();
   try {
@@ -282,10 +294,11 @@ async function comparePngBuffers(browser, baseline, current) {
 }
 
 async function createServer(options = {}) {
-  return createAgentCanvasServer({
-    persistentRegistryPath: await persistentRegistryPathForVisualRegression(),
-    ...options
-  });
+  const persistentRegistryPath = await persistentRegistryPathForVisualRegression();
+  return createFetchSafeTestServer(
+    (serverOptions) => createAgentCanvasServer({ persistentRegistryPath, ...serverOptions }),
+    options
+  );
 }
 
 async function persistentRegistryPathForVisualRegression() {
@@ -298,17 +311,18 @@ async function persistentRegistryPathForVisualRegression() {
 
 async function runWithNpmPlaywright() {
   await new Promise((resolve, reject) => {
-    const child = spawn(npmCommand(), [
+    const npm = npmCliInvocation([
       "exec",
       "--yes",
       "--package",
       "playwright",
       "--",
-      process.execPath,
+      "node",
       path.join(process.cwd(), "scripts", "visual-regression.mjs"),
       "--runner",
       ...(updateBaselines ? ["--update"] : [])
-    ], {
+    ]);
+    const child = spawn(npm.command, npm.args, {
       cwd: process.cwd(),
       env: process.env,
       stdio: "inherit",
@@ -336,7 +350,7 @@ async function launchChromium(playwright) {
 
 async function installPlaywrightChromium() {
   await new Promise((resolve, reject) => {
-    const child = spawn(npmCommand(), [
+    const npm = npmCliInvocation([
       "exec",
       "--yes",
       "--package",
@@ -345,7 +359,8 @@ async function installPlaywrightChromium() {
       "playwright",
       "install",
       "chromium"
-    ], {
+    ]);
+    const child = spawn(npm.command, npm.args, {
       cwd: process.cwd(),
       env: process.env,
       stdio: "inherit",
@@ -433,10 +448,6 @@ async function waitForVersionDiffHeatmap(page) {
   }, null, { timeout: 5000 }).catch((error) => {
     throw new Error(`version pixel-diff heatmap should render changed pixels: ${error.message}`);
   });
-}
-
-function npmCommand() {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
 }
 
 main().catch((error) => {

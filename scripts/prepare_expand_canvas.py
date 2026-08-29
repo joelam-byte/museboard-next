@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a padded outpaint input canvas for Codex-Canvas Expand."""
+"""Create a padded outpaint input canvas for Museboard Expand."""
 
 from __future__ import annotations
 

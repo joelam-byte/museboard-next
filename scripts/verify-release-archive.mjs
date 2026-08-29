@@ -44,13 +44,13 @@ try {
     fs.access(path.join(pluginRoot, "src", "updater.mjs")),
     fs.access(path.join(pluginRoot, "skills", "canvas", "SKILL.md"))
   ]);
-  const { stdout } = await execFileAsync(process.execPath, [path.join(pluginRoot, "bin", "codex-canvas.mjs"), "help"], {
+  const { stdout } = await execFileAsync(process.execPath, [path.join(pluginRoot, "bin", "museboard.mjs"), "help"], {
     cwd: pluginRoot,
     timeout: 10_000,
     maxBuffer: 1024 * 1024,
     windowsHide: true
   });
-  if (!stdout.includes("Codex-Canvas") || !stdout.includes("update")) {
+  if (!stdout.includes("Museboard") || !stdout.includes("update")) {
     throw new Error("Installed release archive CLI smoke check returned unexpected output.");
   }
   console.log(`Release archive installed and started successfully: ${path.basename(archivePath)}`);

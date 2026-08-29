@@ -1,6 +1,6 @@
-# Releasing Codex-Canvas
+# Releasing Museboard
 
-Codex-Canvas releases from a single `main` branch. Release Please maintains a
+Museboard releases from a single `main` branch. Release Please maintains a
 Release PR containing the next version and changelog. Merging that PR creates an
 immutable `vX.Y.Z` tag and GitHub Release, then the release workflow tests and
 uploads a platform-independent plugin package.
@@ -47,7 +47,7 @@ versions.
    the universal archive.
 5. Verify the GitHub Release has all three assets before announcing it:
 
-   - `codex-canvas-vX.Y.Z.tgz`
+   - `museboard-vX.Y.Z.tgz`
    - `release-manifest.json`
    - `SHA256SUMS`
 

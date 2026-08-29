@@ -1,8 +1,10 @@
-# Codex-Canvas
+# Museboard
 
 [中文](README.md) | [English](README.en.md) | [日本語](README.ja.md)
 
-Codex-Canvas is an infinite canvas plugin for Codex. It requires no API setup and uses Codex's built-in GPT-image-2 workflow to edit images on a local canvas. It opens directly inside Codex, collects generated images into the current project, and lets you organize, annotate, edit, compare, and reuse visual assets.
+Museboard is an infinite canvas plugin for Codex. It requires no API setup and uses Codex's built-in GPT-image-2 workflow to edit images on a local canvas. It opens directly inside Codex, collects generated images into the current project, and lets you organize, annotate, edit, compare, and reuse visual assets.
+
+Museboard Next is based on MIT-licensed [Codex-Canvas v0.3.1](https://github.com/Xiangyu-CAS/codex-canvas/releases/tag/v0.3.1). See [`docs/UPSTREAM_BASELINE.md`](docs/UPSTREAM_BASELINE.md) for provenance and compatibility details.
 
 It brings a Lovart-like workflow to Codex: chat on one side, canvas on the other, with powerful image editing tools designed around the same creative loop.
 
@@ -15,8 +17,8 @@ It brings a Lovart-like workflow to Codex: chat on one side, canvas on the other
 Copy this prompt into Codex:
 
 ```text
-Please install Codex-Canvas according to https://github.com/Xiangyu-CAS/codex-canvas.git and its INSTALL.md.
-After installation, tell the user to start a new Codex task and type `@Codex-Canvas open the codex canvas`.
+Please install Museboard according to https://github.com/joelam-byte/museboard-next.git and its INSTALL.md.
+After installation, tell the user to start a new Codex task and type `@Museboard open the canvas`.
 ```
 
 See the full installation guide in [`INSTALL.md`](INSTALL.md).
@@ -26,7 +28,7 @@ Stable versions ship through GitHub Releases. **Settings → Version** only inst
 After installation, start a new Codex task and open the canvas:
 
 ```text
-@Codex-Canvas open the codex canvas
+@Museboard open the canvas
 ```
 
 ## Roadmap
@@ -39,7 +41,7 @@ After installation, start a new Codex task and open the canvas:
 
 ### 1. Open a canvas and collect generated images automatically
 
-Type `@Codex-Canvas open the codex canvas` in your current Codex conversation, and Codex-Canvas opens a local project canvas in the in-app browser. Keep chatting on the left while managing visual assets on the right. Once bound, Codex-Canvas collects only that thread's outputs from `~/.codex/generated_images/<thread-id>`; it does not scan other projects, other threads, or the whole project directory. Results are persisted into that thread's canvas.
+Type `@Museboard open the canvas` in your current Codex conversation, and Museboard opens a local project canvas in the in-app browser. Keep chatting on the left while managing visual assets on the right. Once bound, Museboard collects only that thread's outputs from `~/.codex/generated_images/<thread-id>`; it does not scan other projects, other threads, or the whole project directory. Results are persisted into that thread's canvas.
 
 <p align="center">
   <img src="assets/readme/auto-collect.webp" alt="Auto collect generated images" width="640">
@@ -55,7 +57,7 @@ Quick Edit now defaults to an arrow-note tool: drag from a note position outside
 
 ### 3. Edit Elements: separate layers and rearrange them
 
-Edit Elements separates an image into movable layers such as background, text, products, people, and price tags. You can rearrange those layers on the canvas, while Codex-Canvas can continue completing the background that was hidden behind foreground objects. Downloading any layer from an Edit Elements group exports the whole group as a PSD, with each canvas layer mapped to a Photoshop layer for further editing in tools like Photoshop or Photopea.
+Edit Elements separates an image into movable layers such as background, text, products, people, and price tags. You can rearrange those layers on the canvas, while Museboard can continue completing the background that was hidden behind foreground objects. Downloading any layer from an Edit Elements group exports the whole group as a PSD, with each canvas layer mapped to a Photoshop layer for further editing in tools like Photoshop or Photopea.
 
 <p align="center">
   <img src="assets/readme/edit-elements-comparison.webp" alt="Edit Elements comparison" width="700">
@@ -71,7 +73,7 @@ Edit Text recognizes text in the image and lists it as editable fields. You can 
 
 ### 5. Remove BG: remove backgrounds in one step
 
-For posters, portraits, product shots, and other assets, Codex-Canvas can create a transparent-background result directly on the canvas. The result stays in the same project canvas, ready for composition, layout, or reuse in Codex.
+For posters, portraits, product shots, and other assets, Museboard can create a transparent-background result directly on the canvas. The result stays in the same project canvas, ready for composition, layout, or reuse in Codex.
 
 <p align="center">
   <img src="assets/readme/remove-bg-result.webp" alt="Remove BG result" width="560">
@@ -104,7 +106,7 @@ Expand provides a visual expansion frame and common aspect-ratio presets such as
 
 ## Usage Notes
 
-Codex-Canvas stores canvas data in the current project's `canvas/` directory. Generated assets, job logs, and intermediate files stay local to the project.
+Museboard stores canvas data in the current project's `canvas/` directory. Generated assets, job logs, and intermediate files stay local to the project.
 
 `Send to chat` is currently a prototype path through the Codex app-server. It can submit at the protocol layer, but it may not always appear in the currently visible Codex desktop chat UI. The more reliable workflow is to use `Copy @file`, then paste that reference into the current Codex chat box.
 
@@ -115,7 +117,7 @@ Common local commands:
 ```bash
 npm install
 npm test
-node ./bin/codex-canvas.mjs open --project .
+node ./bin/museboard.mjs open --project .
 ```
 
 Related docs:

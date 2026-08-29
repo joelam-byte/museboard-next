@@ -1,8 +1,10 @@
-# Codex-Canvas
+# Museboard
 
 [中文](README.md) | [English](README.en.md) | [日本語](README.ja.md)
 
-Codex-Canvas は Codex 向けの無限キャンバス Plugin です。API 設定は不要で、Codex 組み込みの GPT-image-2 ワークフローを使ってローカルキャンバス上で画像編集を行えます。Codex の中で直接キャンバスを開き、生成された画像を現在のプロジェクトに収集し、視覚素材を整理、注釈、編集、比較、再利用できます。
+Museboard は Codex 向けの無限キャンバス Plugin です。API 設定は不要で、Codex 組み込みの GPT-image-2 ワークフローを使ってローカルキャンバス上で画像編集を行えます。Codex の中で直接キャンバスを開き、生成された画像を現在のプロジェクトに収集し、視覚素材を整理、注釈、編集、比較、再利用できます。
+
+Museboard Next は MIT ライセンスの [Codex-Canvas v0.3.1](https://github.com/Xiangyu-CAS/codex-canvas/releases/tag/v0.3.1) を基準にしています。由来と互換性の詳細は [`docs/UPSTREAM_BASELINE.md`](docs/UPSTREAM_BASELINE.md) を参照してください。
 
 Codex に Lovart に近い作業スタイルを追加します。片側でチャットし、もう片側でキャンバスを使いながら、同じ創作ループに合わせて設計された強力な画像編集ツールを利用できます。
 
@@ -15,8 +17,8 @@ Codex に Lovart に近い作業スタイルを追加します。片側でチャ
 次のプロンプトを Codex にコピーしてください。
 
 ```text
-https://github.com/Xiangyu-CAS/codex-canvas.git とその INSTALL.md に従って Codex-Canvas をインストールしてください。
-インストール後、新しい Codex タスクを開始し、`@Codex-Canvas codex canvas を開いて` と入力するようユーザーに伝えてください。
+https://github.com/joelam-byte/museboard-next.git とその INSTALL.md に従って Museboard をインストールしてください。
+インストール後、新しい Codex タスクを開始し、`@Museboard canvas を開いて` と入力するようユーザーに伝えてください。
 ```
 
 完全なインストール手順は [`INSTALL.md`](INSTALL.md) を参照してください。
@@ -26,7 +28,7 @@ https://github.com/Xiangyu-CAS/codex-canvas.git とその INSTALL.md に従っ�
 インストール後、新しい Codex タスクでキャンバスを開きます。
 
 ```text
-@Codex-Canvas codex canvas を開いて
+@Museboard canvas を開いて
 ```
 
 ## Roadmap
@@ -39,7 +41,7 @@ https://github.com/Xiangyu-CAS/codex-canvas.git とその INSTALL.md に従っ�
 
 ### 1. キャンバスを開き、生成画像を自動収集
 
-現在の Codex 会話で `@Codex-Canvas codex canvas を開いて` と入力すると、Codex-Canvas は in-app browser でプロジェクトのローカルキャンバスを開きます。左側でチャットを続けながら、右側で視覚素材を管理できます。thread をバインドすると、Codex-Canvas は `~/.codex/generated_images/<thread-id>` にあるその thread の出力だけを収集し、他のプロジェクト、他の thread、プロジェクト全体はスキャンしません。生成結果はその thread のキャンバスに保存されます。
+現在の Codex 会話で `@Museboard canvas を開いて` と入力すると、Museboard は in-app browser でプロジェクトのローカルキャンバスを開きます。左側でチャットを続けながら、右側で視覚素材を管理できます。thread をバインドすると、Museboard は `~/.codex/generated_images/<thread-id>` にあるその thread の出力だけを収集し、他のプロジェクト、他の thread、プロジェクト全体はスキャンしません。生成結果はその thread のキャンバスに保存されます。
 
 <p align="center">
   <img src="assets/readme/auto-collect.webp" alt="生成画像の自動収集" width="640">
@@ -55,7 +57,7 @@ Quick Edit は矢印注釈ツールから始まります。画像外の説明位
 
 ### 3. Edit Elements: レイヤーに分離して再配置
 
-Edit Elements は画像を背景、テキスト、商品、人物、価格タグなどの移動可能なレイヤーに分離します。分離したレイヤーはキャンバス上で再配置でき、Codex-Canvas は前景オブジェクトに隠れていた背景の補完も続けられます。Edit Elements グループの任意のレイヤーをダウンロードすると、グループ全体が PSD として書き出され、各キャンバスレイヤーが Photoshop レイヤーに対応します。Photoshop や Photopea などの専門ツールでさらに編集できます。
+Edit Elements は画像を背景、テキスト、商品、人物、価格タグなどの移動可能なレイヤーに分離します。分離したレイヤーはキャンバス上で再配置でき、Museboard は前景オブジェクトに隠れていた背景の補完も続けられます。Edit Elements グループの任意のレイヤーをダウンロードすると、グループ全体が PSD として書き出され、各キャンバスレイヤーが Photoshop レイヤーに対応します。Photoshop や Photopea などの専門ツールでさらに編集できます。
 
 <p align="center">
   <img src="assets/readme/edit-elements-comparison.webp" alt="Edit Elements comparison" width="700">
@@ -71,7 +73,7 @@ Edit Text は画像内のテキストを認識し、編集可能なフィール�
 
 ### 5. Remove BG: ワンステップで背景削除
 
-ポスター、ポートレート、商品画像などの素材に対して、Codex-Canvas は透明背景の結果をキャンバス上に直接生成できます。結果は同じプロジェクトキャンバスに残るため、合成、レイアウト、Codex での再利用にすぐ使えます。
+ポスター、ポートレート、商品画像などの素材に対して、Museboard は透明背景の結果をキャンバス上に直接生成できます。結果は同じプロジェクトキャンバスに残るため、合成、レイアウト、Codex での再利用にすぐ使えます。
 
 <p align="center">
   <img src="assets/readme/remove-bg-result.webp" alt="Remove BG result" width="560">
@@ -104,7 +106,7 @@ Expand は視覚的な拡張フレームと、1:1、3:4、16:9、9:16 などの�
 
 ## 使用上の注意
 
-Codex-Canvas はキャンバスデータを現在のプロジェクトの `canvas/` ディレクトリに保存します。生成素材、ジョブログ、中間ファイルはプロジェクト内にローカル保存されます。
+Museboard はキャンバスデータを現在のプロジェクトの `canvas/` ディレクトリに保存します。生成素材、ジョブログ、中間ファイルはプロジェクト内にローカル保存されます。
 
 `Send to chat` は現在、Codex app-server を経由するプロトタイプの経路です。プロトコル層では送信できますが、現在表示されている Codex デスクトップ版のチャット UI に必ず表示されるとは限りません。より確実な手順は `Copy @file` を使い、その参照を現在の Codex チャットボックスへ貼り付けることです。
 
@@ -115,7 +117,7 @@ Codex-Canvas はキャンバスデータを現在のプロジェクトの `canva
 ```bash
 npm install
 npm test
-node ./bin/codex-canvas.mjs open --project .
+node ./bin/museboard.mjs open --project .
 ```
 
 関連ドキュメント:

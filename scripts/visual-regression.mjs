@@ -14,6 +14,7 @@ const pngTwo = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFUlEQVR4nGO8Y6D6
 const baselineDir = path.join(process.cwd(), "scripts", "reference-screenshots");
 const updateBaselines = process.argv.includes("--update");
 const pixelThreshold = normalizePixelThreshold(process.env.CODEX_CANVAS_VISUAL_THRESHOLD);
+const visualDebugDir = readOptionValue(process.argv, "--debug-dir") || process.env.CODEX_CANVAS_VISUAL_DEBUG_DIR || "";
 const channelTolerance = 10;
 const viewports = [
   { name: "desktop", width: 1280, height: 800, deviceScaleFactor: 1 },
@@ -30,6 +31,16 @@ function normalizePixelThreshold(value) {
     throw new Error("CODEX_CANVAS_VISUAL_THRESHOLD must be a number from 0 to 1.");
   }
   return parsed;
+}
+
+function readOptionValue(args, option) {
+  const index = args.indexOf(option);
+  if (index === -1) return "";
+  const value = args[index + 1];
+  if (!value || value.startsWith("--")) {
+    throw new Error(`${option} requires a value.`);
+  }
+  return value;
 }
 
 async function main() {
@@ -61,10 +72,9 @@ async function main() {
         const baseline = await readBaseline(baselinePath, name);
         const diff = await comparePngBuffers(browser, baseline, screenshot);
         if (diff.changedRatio > pixelThreshold) {
-          const debugDir = process.env.CODEX_CANVAS_VISUAL_DEBUG_DIR;
-          if (debugDir) {
-            await fsp.mkdir(debugDir, { recursive: true });
-            await fsp.writeFile(path.join(debugDir, `${name}-actual.png`), screenshot);
+          if (visualDebugDir) {
+            await fsp.mkdir(visualDebugDir, { recursive: true });
+            await fsp.writeFile(path.join(visualDebugDir, `${name}-actual.png`), screenshot);
           }
           const percent = (diff.changedRatio * 100).toFixed(2);
           throw new Error(`${name} visual regression exceeded ${(pixelThreshold * 100).toFixed(2)}% threshold: ${percent}% pixels changed`);
@@ -320,7 +330,8 @@ async function runWithNpmPlaywright() {
       "node",
       path.join(process.cwd(), "scripts", "visual-regression.mjs"),
       "--runner",
-      ...(updateBaselines ? ["--update"] : [])
+      ...(updateBaselines ? ["--update"] : []),
+      ...(visualDebugDir ? ["--debug-dir", visualDebugDir] : [])
     ]);
     const child = spawn(npm.command, npm.args, {
       cwd: process.cwd(),

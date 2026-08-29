@@ -163,7 +163,10 @@ async function testVisualRunnerNpmInvocation() {
   for (const scriptName of ["visual-smoke.mjs", "visual-regression.mjs"]) {
     const capturePath = path.join(fixtureDir, `${scriptName}.npm-args.json`);
     const scriptPath = path.join(process.cwd(), "scripts", scriptName);
-    await execFileAsync(process.execPath, [scriptPath], {
+    const forwardedArgs = scriptName === "visual-regression.mjs"
+      ? ["--debug-dir", path.join(fixtureDir, "visual debug")]
+      : [];
+    await execFileAsync(process.execPath, [scriptPath, ...forwardedArgs], {
       cwd: process.cwd(),
       env: {
         ...process.env,
@@ -182,7 +185,8 @@ async function testVisualRunnerNpmInvocation() {
       "--",
       "node",
       scriptPath,
-      "--runner"
+      "--runner",
+      ...forwardedArgs
     ];
     assertEqual(
       JSON.stringify(args),

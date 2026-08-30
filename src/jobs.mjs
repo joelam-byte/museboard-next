@@ -11,6 +11,11 @@ import { addJobPlaceholder, deleteObject, readState, transformState, updateObjec
 import { startCodexImageJob, stopCodexProcess } from "./codex-runner.mjs";
 import { recognizeTextLocal } from "./local-ocr.mjs";
 import { createOperationLease } from "./operation-leases.mjs";
+import {
+  prepareAgentRunForJob,
+  recordAgentRunJobFailure,
+  recordAgentRunJobSuccess
+} from "./agent-run-execution.mjs";
 
 const execFileAsync = promisify(execFile);
 const jobs = new Map();
@@ -35,6 +40,10 @@ const quickEditAnnotationPromptSuffix = [
 function normalizeCanvasId(value) {
   const canvasId = typeof value === "string" ? value.trim() : "";
   return canvasId || null;
+}
+
+function agentRunCanvasIdForJob(canvasId) {
+  return normalizeCanvasId(canvasId) || "shared";
 }
 
 export async function createImageJob(projectDir, input, options = {}) {
@@ -114,6 +123,16 @@ export async function createImageJob(projectDir, input, options = {}) {
     backgroundCompletionPromise: null,
     error: null
   };
+  const agentRun = await prepareAgentRunForJob(projectDir, {
+    canvasId: agentRunCanvasIdForJob(canvasId),
+    agentRunId: input.agentRunId || null,
+    jobId: job.id,
+    action,
+    sourceObject: object,
+    prompt: job.prompt
+  });
+  job.agentRunId = agentRun.id;
+  job.agentRunCanvasId = agentRun.canvasId;
   const operationLease = await createOperationLease("image-job", { action, projectDir, canvasId });
   let placeholder;
   try {
@@ -123,10 +142,14 @@ export async function createImageJob(projectDir, input, options = {}) {
       status: "running",
       name: actionLabel(action),
       sourceObjectId: object.id,
+      sourceObjectIds: [object.id],
+      agentRunId: job.agentRunId,
+      jobId: job.id,
       width: expandOptions?.targetWidth || object.width,
       height: expandOptions?.targetHeight || object.height
     }, storeOptions);
   } catch (error) {
+    await recordAgentRunFailureBestEffort(projectDir, job, error);
     await operationLease.release();
     throw error;
   }
@@ -285,6 +308,25 @@ export async function submitTextRecognitionEdit(projectDir, id, input = {}, opti
     items: job.items,
     submittedAt: new Date().toISOString()
   };
+  const agentRun = await prepareAgentRunForJob(projectDir, {
+    canvasId: agentRunCanvasIdForJob(job.canvasId || options.canvasId),
+    agentRunId: input.agentRunId || null,
+    jobId: job.id,
+    action: "edit-text",
+    sourceObject: object,
+    prompt: plan.prompt
+  });
+  job.agentRunId = agentRun.id;
+  job.agentRunCanvasId = agentRun.canvasId;
+  try {
+    job.placeholder = await updateObject(projectDir, job.placeholderId, {
+      agentRunId: job.agentRunId,
+      sourceObjectIds: [job.sourceObjectId],
+      jobId: job.id
+    }, storeOptions);
+  } catch {
+    // The user may remove the recognition placeholder before confirming its edit.
+  }
   await fs.writeFile(job.editPlanPath, `${JSON.stringify(plan, null, 2)}\n`);
   job.stage = "generating";
   job.prompt = plan.prompt;
@@ -1117,6 +1159,9 @@ async function collectAndPlaceResult(projectDir, job, startedAtMs, { final, dete
     prompt: jobPrompt(job),
     imagegenPrompt: job.imagegenPrompt || "",
     sourceObjectId: job.sourceObjectId,
+    sourceObjectIds: [job.sourceObjectId],
+    agentRunId: job.agentRunId || null,
+    jobId: job.id,
     annotationSessionId: job.annotationSessionId || null,
     canvasId: job.canvasId
   });
@@ -1130,6 +1175,9 @@ async function collectAndPlaceResult(projectDir, job, startedAtMs, { final, dete
       prompt: jobPrompt(job),
       imagegenPrompt: job.imagegenPrompt || "",
       sourceObjectId: job.sourceObjectId,
+      sourceObjectIds: [job.sourceObjectId],
+      agentRunId: job.agentRunId || null,
+      jobId: job.id,
       canvasId: job.canvasId
     });
   }
@@ -1146,6 +1194,7 @@ async function collectAndPlaceResult(projectDir, job, startedAtMs, { final, dete
       job.error = "Codex finished, but no generated image was found to collect.";
       await appendJobLog(job, `No image collected after ${formatDuration(job.durationMs)}.`);
       await updatePlaceholder(projectDir, job, "failed");
+      await recordAgentRunFailureBestEffort(projectDir, job, job.error);
     }
     return false;
   }
@@ -1156,6 +1205,7 @@ async function collectAndPlaceResult(projectDir, job, startedAtMs, { final, dete
   job.completedAt = new Date().toISOString();
   job.durationMs = Date.now() - startedAtMs;
   await placeImportedAtPlaceholder(projectDir, job);
+  await recordAgentRunSuccessBestEffort(projectDir, job);
   await appendJobLog(job, `Collected ${result.imported.length} image(s) after ${formatDuration(job.durationMs)}.`);
   return true;
 }
@@ -1565,6 +1615,7 @@ async function markFailed(projectDir, job, error) {
   job.error = error?.message || String(error);
   await appendJobLog(job, `Job failed after ${formatDuration(job.durationMs)}: ${job.error}`);
   await updatePlaceholder(projectDir, job, "failed");
+  await recordAgentRunFailureBestEffort(projectDir, job, error);
 }
 
 async function markTextRecognitionFailed(job, error) {
@@ -1575,6 +1626,35 @@ async function markTextRecognitionFailed(job, error) {
   await appendJobLog(job, `Text recognition failed after ${formatDuration(job.durationMs)}: ${job.error}`);
   if (job.projectDir) {
     await updatePlaceholder(job.projectDir, job, "failed");
+    await recordAgentRunFailureBestEffort(job.projectDir, job, error);
+  }
+}
+
+async function recordAgentRunSuccessBestEffort(projectDir, job) {
+  if (!job.agentRunId || !job.agentRunCanvasId) return;
+  try {
+    await recordAgentRunJobSuccess(projectDir, {
+      canvasId: job.agentRunCanvasId,
+      agentRunId: job.agentRunId,
+      jobId: job.id,
+      outputObjectIds: job.imported.map((object) => object.id)
+    });
+  } catch (error) {
+    await appendJobLog(job, `AgentRun success record skipped: ${error.message || String(error)}`);
+  }
+}
+
+async function recordAgentRunFailureBestEffort(projectDir, job, error) {
+  if (!job.agentRunId || !job.agentRunCanvasId) return;
+  try {
+    await recordAgentRunJobFailure(projectDir, {
+      canvasId: job.agentRunCanvasId,
+      agentRunId: job.agentRunId,
+      jobId: job.id,
+      error
+    });
+  } catch (recordError) {
+    await appendJobLog(job, `AgentRun failure record skipped: ${recordError.message || String(recordError)}`);
   }
 }
 
@@ -1583,6 +1663,7 @@ function publicJob(job) {
     id: job.id,
     action: job.action,
     status: job.status,
+    agentRunId: job.agentRunId || null,
     objectId: job.objectId,
     sourceObjectId: job.sourceObjectId,
     annotationSessionId: job.annotationSessionId || null,
@@ -1611,6 +1692,7 @@ function publicTextRecognitionJob(job) {
     action: job.action,
     stage: job.stage,
     status: job.status,
+    agentRunId: job.agentRunId || null,
     objectId: job.objectId,
     sourceObjectId: job.sourceObjectId,
     createdAt: job.createdAt,
@@ -1724,6 +1806,8 @@ async function placeImportedAtPlaceholder(projectDir, job) {
     height: job.placeholder.height,
     layoutMode: "canvas-row",
     sourceObjectId: job.sourceObjectId,
+    sourceObjectIds: [job.sourceObjectId],
+    agentRunId: job.agentRunId || null,
     jobId: job.id,
     ...(job.annotationSessionId ? { annotationSessionId: job.annotationSessionId } : {})
   }, storeOptions);
@@ -1759,6 +1843,9 @@ async function placeImportedElementLayers(projectDir, job) {
     const patch = {
       layoutMode: "canvas-stack",
       sourceObjectId: job.sourceObjectId,
+      sourceObjectIds: [job.sourceObjectId],
+      agentRunId: job.agentRunId || null,
+      jobId: job.id,
       layerGroupId: groupId,
       layerGroupName: groupName,
       layerGroupSourceObjectId: job.sourceObjectId,

@@ -61,7 +61,10 @@ export async function collectRecentImages(projectDir, options = {}) {
       y: candidate.y,
       batchId: candidate.batchId,
       layoutMode: candidate.layoutMode,
-      sourceObjectId: options.sourceObjectId || null
+      sourceObjectId: options.sourceObjectId || null,
+      sourceObjectIds: options.sourceObjectIds || [],
+      agentRunId: options.agentRunId || null,
+      jobId: options.jobId || null
     }, storeOptions);
     imported.push(object);
   }

@@ -45,6 +45,7 @@ const agentSourceSummary = document.querySelector("#agentSourceSummary");
 const agentRunStatus = document.querySelector("#agentRunStatus");
 const agentRunDetails = document.querySelector("#agentRunDetails");
 const agentClarifications = document.querySelector("#agentClarifications");
+const agentConfirmButton = document.querySelector("#agentConfirmButton");
 const agentSkillList = document.querySelector("#agentSkillList");
 const canvasSearch = createCanvasSearchUi();
 const defaultCanvasTool = "select";
@@ -182,7 +183,12 @@ const translations = {
     agentRequestPlaceholder: "Describe the outcome, what to preserve, and the output you need.",
     agentAnalyze: "Analyze request",
     agentConfirm: "Confirm generation",
-    agentConfirmPending: "Image execution is connected in the next integration stage.",
+    agentConfirmPending: "Analyze a request and resolve any clarifications first.",
+    agentConfirmReady: "Start the selected image-edit Skill.",
+    agentConfirmSingleSource: "This confirmed V1 workflow currently uses exactly one source image.",
+    agentConfirmEditText: "Edit Text keeps its existing OCR-and-replace workflow. Start it from the canvas toolbar.",
+    agentConfirmUnsupported: "This Skill's multi-output execution is scheduled for a later V1 stage.",
+    agentStartingGeneration: "Starting confirmed generation…",
     skillHeading: "Skills",
     skillHint: "Choose a direction before analysis, or replace the recommendation before generation.",
     agentAnalyzeFailed: "Could not analyze this request.",
@@ -199,7 +205,7 @@ const translations = {
     agentClarificationFailed: "Could not update the brief.",
     agentSkillSelected: "Selected",
     agentStatusNeedsClarification: "Clarification needed before generation.",
-    agentStatusReady: "Brief ready. Review it and explicitly confirm generation in the next integration stage.",
+    agentStatusReady: "Brief ready. Review it and explicitly confirm generation.",
     agentStatusRunning: "Generation is running.",
     agentStatusSucceeded: "Generation completed.",
     agentStatusPartial: "Some outputs completed.",
@@ -378,7 +384,12 @@ const translations = {
     agentRequestPlaceholder: "描述目标结果、需要保留的内容与输出要求。",
     agentAnalyze: "分析需求",
     agentConfirm: "确认生成",
-    agentConfirmPending: "图片执行将在下一阶段接入。",
+    agentConfirmPending: "请先分析需求并完成必要的澄清。",
+    agentConfirmReady: "启动已选的改图技能。",
+    agentConfirmSingleSource: "当前已确认的 V1 流程仅支持一张源图片。",
+    agentConfirmEditText: "编辑文字保留原有的 OCR 识别与替换流程，请从画布工具栏启动。",
+    agentConfirmUnsupported: "此技能的多输出执行将在后续 V1 阶段接入。",
+    agentStartingGeneration: "正在启动确认后的生成…",
     skillHeading: "技能",
     skillHint: "可在分析前选择方向，或在生成前替换推荐技能。",
     agentAnalyzeFailed: "无法分析此需求。",
@@ -395,7 +406,7 @@ const translations = {
     agentClarificationFailed: "无法更新需求简报。",
     agentSkillSelected: "已选择",
     agentStatusNeedsClarification: "生成前需要补充澄清信息。",
-    agentStatusReady: "需求简报已就绪。请审核，并在下一阶段明确确认生成。",
+    agentStatusReady: "需求简报已就绪。请审核后明确确认生成。",
     agentStatusRunning: "正在生成。",
     agentStatusSucceeded: "生成已完成。",
     agentStatusPartial: "部分输出已完成。",
@@ -509,6 +520,8 @@ let agentSkills = [];
 let activeAgentRun = null;
 let agentDraftSkillId = null;
 let activeAgentTab = "agent";
+let agentRunPollTimer = null;
+const confirmableAgentSkillIds = new Set(["quick-edit", "expand", "remove-bg", "edit-elements"]);
 const composerImageActions = new Set(["quick-edit", "expand", "edit-text"]);
 const immediateImageJobActions = new Set(["remove-bg", "edit-elements"]);
 const quickEditMarkupTools = new Set(["annotation", "pencil", "text"]);
@@ -1623,6 +1636,9 @@ function initAgentWorkbench() {
     if (!button) return;
     selectAgentSkill(button.dataset.skillId).catch((error) => setAgentStatus(error?.message || t("agentSkillFailed"), { error: true }));
   });
+  agentConfirmButton?.addEventListener("click", () => {
+    confirmActiveAgentRun().catch((error) => setAgentStatus(error?.message || t("agentAnalyzeFailed"), { error: true }));
+  });
   renderAgentSourceSelection();
   renderAgentRun();
 }
@@ -1744,6 +1760,52 @@ async function submitAgentClarifications() {
   }
 }
 
+async function confirmActiveAgentRun() {
+  const unavailableReason = agentConfirmUnavailableReason(activeAgentRun);
+  if (unavailableReason) throw new Error(unavailableReason);
+  agentConfirmButton.disabled = true;
+  setAgentStatus(t("agentStartingGeneration"));
+  try {
+    const payload = await requestAgentApi(`/api/agent-runs/${encodeURIComponent(activeAgentRun.id)}/confirm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({})
+    });
+    activeAgentRun = payload.agentRun;
+    renderAgentRun();
+    if (payload.imageJob?.id) {
+      const source = state?.objects?.find((object) => object.id === activeAgentRun.sourceObjectIds[0]);
+      if (source) frameJobPlacement(source.id, payload.imageJob.placeholder || null);
+      pollImageJob(payload.imageJob.id);
+    }
+    pollActiveAgentRun(activeAgentRun.id);
+  } catch (error) {
+    renderAgentRun();
+    throw error;
+  }
+}
+
+function pollActiveAgentRun(agentRunId) {
+  window.clearTimeout(agentRunPollTimer);
+  const tick = async () => {
+    if (!activeAgentRun || activeAgentRun.id !== agentRunId) return;
+    try {
+      const payload = await requestAgentApi(`/api/agent-runs/${encodeURIComponent(agentRunId)}`);
+      if (!activeAgentRun || activeAgentRun.id !== agentRunId) return;
+      activeAgentRun = payload.agentRun;
+      renderAgentRun();
+      if (activeAgentRun.status === "running") {
+        agentRunPollTimer = window.setTimeout(tick, 2500);
+      } else if (["succeeded", "partial", "failed"].includes(activeAgentRun.status)) {
+        await loadState();
+      }
+    } catch (error) {
+      if (activeAgentRun?.id === agentRunId) setAgentStatus(error?.message || t("agentAnalyzeFailed"), { error: true });
+    }
+  };
+  agentRunPollTimer = window.setTimeout(tick, 2500);
+}
+
 function renderAgentRun() {
   if (!agentRunStatus || !agentRunDetails || !agentClarifications) return;
   agentRunDetails.replaceChildren();
@@ -1752,6 +1814,7 @@ function renderAgentRun() {
     agentRunStatus.textContent = "";
     agentRunStatus.classList.remove("is-error");
     renderAgentSkills();
+    renderAgentConfirmButton();
     return;
   }
 
@@ -1769,6 +1832,22 @@ function renderAgentRun() {
   if (activeAgentRun.status === "needs_clarification") renderAgentClarifications();
   agentDraftSkillId = activeAgentRun.selectedSkillId || agentDraftSkillId;
   renderAgentSkills();
+  renderAgentConfirmButton();
+}
+
+function renderAgentConfirmButton() {
+  if (!agentConfirmButton) return;
+  const unavailableReason = agentConfirmUnavailableReason(activeAgentRun);
+  agentConfirmButton.disabled = Boolean(unavailableReason);
+  agentConfirmButton.title = unavailableReason || t("agentConfirmReady");
+}
+
+function agentConfirmUnavailableReason(agentRun) {
+  if (!agentRun || agentRun.status !== "ready") return t("agentConfirmPending");
+  if (agentRun.sourceObjectIds.length !== 1) return t("agentConfirmSingleSource");
+  if (agentRun.selectedSkillId === "edit-text") return t("agentConfirmEditText");
+  if (!confirmableAgentSkillIds.has(agentRun.selectedSkillId)) return t("agentConfirmUnsupported");
+  return "";
 }
 
 function renderAgentClarifications() {
@@ -5454,7 +5533,6 @@ function applyLanguage() {
   if (agentWorkbench) {
     agentWorkbench.setAttribute("aria-label", t("agentWorkbench"));
     agentWorkbench.querySelector(".agent-workbench-tabs")?.setAttribute("aria-label", t("agentWorkbench"));
-    document.querySelector("#agentConfirmButton")?.setAttribute("title", t("agentConfirmPending"));
     renderAgentSourceSelection();
     renderAgentRun();
   }

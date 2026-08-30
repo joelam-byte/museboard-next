@@ -860,6 +860,7 @@ export async function addJobPlaceholder(projectDir, input, options = {}) {
       action: sanitizeString(input.action, "image-job", 80),
       status: sanitizeString(input.status, "running", 80),
       sourceObjectId: source.id,
+      ...lightweightProvenanceFields(input),
       layoutMode: "canvas-row",
       src: source.src || null,
       assetPath: source.assetPath || null,

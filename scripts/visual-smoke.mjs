@@ -227,6 +227,7 @@ async function runViewportSmoke(browser, viewport) {
     }
 
     await assertSingleImageActionToolbar(page);
+    await assertAgentWorkbench(page);
     await assertQuickEditAnnotationWorkflow(page, image.id, viewport);
     await assertExpandComposer(page, viewport);
     const croppedImageId = await assertCropWorkflow(page, image.id);
@@ -238,6 +239,31 @@ async function runViewportSmoke(browser, viewport) {
     await context.close();
     await new Promise((resolve) => server.close(resolve));
   }
+}
+
+async function assertAgentWorkbench(page) {
+  await waitForVisible(page, "#agentWorkbench", "Agent workbench should remain visible beside the canvas");
+  const sourceSummary = page.locator("#agentSourceSummary");
+  await page.waitForFunction(() => document.querySelector("#agentSourceSummary")?.textContent?.trim());
+  const sourceSummaryText = await sourceSummary.textContent();
+  assert(/1/.test(sourceSummaryText), "Agent workbench should reflect the selected image count");
+
+
+  await page.locator("#settingsButton").click();
+  await page.locator("[data-settings-row='language']").click();
+  await page.locator("[data-language='zh']").click();
+  await page.waitForFunction(() => document.querySelector("#agentPanel h2")?.textContent === "图片方向");
+  await page.locator("[data-language='en']").click();
+  await page.waitForFunction(() => document.querySelector("#agentPanel h2")?.textContent === "Image direction");
+
+  await page.locator('[data-agent-tab="skill"]').click();
+  await page.waitForFunction(() => document.querySelector('[data-agent-tab="skill"]')?.getAttribute("aria-selected") === "true");
+  await waitForVisible(page, '[data-skill-id="quick-edit"]', "Skill tab should list the Quick Edit descriptor");
+
+  await page.locator('[data-agent-tab="agent"]').click();
+  await page.waitForFunction(() => document.querySelector('[data-agent-tab="agent"]')?.getAttribute("aria-selected") === "true");
+  const workbenchRect = await page.locator("#agentWorkbench").boundingBox();
+  assertRectVisible(workbenchRect, "Agent workbench");
 }
 
 async function assertCanvasInputInteractions(page, imageId) {
@@ -394,8 +420,10 @@ async function assertCanvasInputInteractions(page, imageId) {
   await dispatchCanvasWheel(page, wheelPoint, { deltaY: -42, ctrlKey: true });
   after = await canvasInputSnapshot(page, imageId);
   assert(after.zoom > before.zoom, "ctrlKey pinch-style wheel should zoom in");
-  assertNear(after.viewportX + anchoredWorldPoint.x * after.zoom, localPointer.x, 0.05, "pinch zoom should preserve the horizontal cursor anchor");
-  assertNear(after.viewportY + anchoredWorldPoint.y * after.zoom, localPointer.y, 0.05, "pinch zoom should preserve the vertical cursor anchor");
+  // DOMMatrix reflects the browser's serialized CSS transform, so allow sub-pixel serialization drift.
+  const pinchAnchorTolerance = 0.1;
+  assertNear(after.viewportX + anchoredWorldPoint.x * after.zoom, localPointer.x, pinchAnchorTolerance, "pinch zoom should preserve the horizontal cursor anchor");
+  assertNear(after.viewportY + anchoredWorldPoint.y * after.zoom, localPointer.y, pinchAnchorTolerance, "pinch zoom should preserve the vertical cursor anchor");
 
   before = after;
   const nativeWheel = await page.evaluate(() => {
@@ -1028,11 +1056,13 @@ async function assertCanvasIsNotBlank(page, viewport) {
       height: rect.height
     });
     const board = document.querySelector("#board");
+    const canvasPane = document.querySelector(".canvas-pane");
     const object = document.querySelector(".canvas-object");
     const image = document.querySelector(".canvas-object img");
     const boardStyle = board ? getComputedStyle(board) : null;
     return {
       boardRect: rectSnapshot(board?.getBoundingClientRect()),
+      canvasPaneRect: rectSnapshot(canvasPane?.getBoundingClientRect()),
       objectRect: rectSnapshot(object?.getBoundingClientRect()),
       imageRect: rectSnapshot(image?.getBoundingClientRect()),
       boardBackground: boardStyle?.backgroundColor || "",
@@ -1042,7 +1072,7 @@ async function assertCanvasIsNotBlank(page, viewport) {
     };
   });
 
-  assertRectCoversViewport(snapshot.boardRect, viewport, "#board");
+  assertRectCoversContainer(snapshot.boardRect, snapshot.canvasPaneRect, "#board", ".canvas-pane");
   assertRectVisible(snapshot.objectRect, ".canvas-object");
   assertRectVisible(snapshot.imageRect, ".canvas-object img");
   assert(snapshot.boardBackground !== "rgba(0, 0, 0, 0)", "#board should paint a visible background");
@@ -1586,6 +1616,16 @@ function assertRectCoversViewport(rect, viewport, label) {
   assertRectVisible(rect, label);
   assert(rect.width >= viewport.width, `${label} should cover viewport width`);
   assert(rect.height >= viewport.height, `${label} should cover viewport height`);
+}
+
+function assertRectCoversContainer(rect, container, label, containerLabel) {
+  assertRectVisible(container, containerLabel);
+  assertRectVisible(rect, label);
+  const tolerance = 1;
+  assert(rect.width >= container.width - tolerance, `${label} should cover ${containerLabel} width`);
+  assert(rect.height >= container.height - tolerance, `${label} should cover ${containerLabel} height`);
+  assert(rect.left <= container.left + tolerance, `${label} should start at ${containerLabel} left edge`);
+  assert(rect.top <= container.top + tolerance, `${label} should start at ${containerLabel} top edge`);
 }
 
 function assertRectInsideViewport(rect, viewport, label) {

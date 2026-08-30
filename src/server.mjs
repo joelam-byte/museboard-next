@@ -6,6 +6,10 @@ import crypto from "node:crypto";
 import { collectRecentImages, defaultGeneratedImagesRoot, generatedImagesDirForThread } from "./collector.mjs";
 import { hasActiveChatOperations, sendImageToBoundChat, sendMentionToBoundChat, stopActiveChatOperations } from "./codex-chat.mjs";
 import { createImageJob, createTextRecognitionJob, getActivePlaceholderIds, getIgnoredGeneratedImagePaths, getImageJob, getTextRecognitionJob, hasActiveCanvasJobs, hasRunningImageJobs, submitTextRecognitionEdit } from "./jobs.mjs";
+import { analyzeAgentRun, answerAgentRunClarifications, selectAgentRunSkill } from "./agent-brief-service.mjs";
+import { createCodexAgentAnalyzer } from "./agent-analyzer.mjs";
+import { SKILL_DESCRIPTORS } from "./agent-run-contracts.mjs";
+import { readAgentRun } from "./agent-run-store.mjs";
 import { assetsDirFor, projectRegistryPath, publicDir, runtimePathFor } from "./paths.mjs";
 import { exportLayerGroupPsd } from "./psd-export.mjs";
 import { addImage, addObject, deleteObject, deleteObjects, ensureProjectStore, markStaleJobPlaceholders, promptHistory, readState, reorderLayerGroupLayer, restoreObjects, searchObjects, setLayerGroupOrder, updateObject, updateObjects, updateProjectMeta, updateSelection, updateViewport, versionGroups } from "./store.mjs";
@@ -29,14 +33,14 @@ const contentTypes = {
 const defaultMaxJsonBodyBytes = 32 * 1024 * 1024;
 const maxQueryLimit = 100;
 
-export async function createServer({ projectDir, host = "127.0.0.1", port = 43217, autoCollect = true, chatThreadId = null, autoCollectIntervalMs = 5000, autoCollectWatchDebounceMs = 250, maxJsonBodyBytes = defaultMaxJsonBodyBytes, persistentRegistryPath = projectRegistryPath(), generatedImagesRoot = defaultGeneratedImagesRoot(), hasActiveJobs = hasActiveCanvasJobs } = {}) {
+export async function createServer({ projectDir, host = "127.0.0.1", port = 43217, autoCollect = true, chatThreadId = null, autoCollectIntervalMs = 5000, autoCollectWatchDebounceMs = 250, maxJsonBodyBytes = defaultMaxJsonBodyBytes, persistentRegistryPath = projectRegistryPath(), generatedImagesRoot = defaultGeneratedImagesRoot(), hasActiveJobs = hasActiveCanvasJobs, agentAnalyzer = null } = {}) {
   const registry = createProjectRegistry({ host, port, autoCollect, autoCollectIntervalMs, autoCollectWatchDebounceMs, maxJsonBodyBytes, persistentRegistryPath, generatedImagesRoot, hasActiveJobs });
   const initialProject = await registerProject(registry, projectDir, { autoCollect, chatThreadId });
   await restorePersistedProjects(registry);
 
   const server = http.createServer(async (request, response) => {
     try {
-      await handleRequest(request, response, { registry, server });
+      await handleRequest(request, response, { registry, server, agentAnalyzer });
     } catch (error) {
       const status = error.statusCode || 500;
       sendJson(response, status, {
@@ -150,6 +154,57 @@ async function handleRequest(request, response, context) {
         threadId: project.chatThreadId || null
       }
     });
+  }
+
+  if (request.method === "GET" && pathname === "/api/skills") {
+    return sendJson(response, 200, { skills: SKILL_DESCRIPTORS });
+  }
+
+  if (request.method === "POST" && pathname === "/api/agent-runs") {
+    const body = await readJson(request, context.registry);
+    assertExpectedCanvasScope(project, body);
+    const agentRun = await analyzeAgentRun(projectDir, {
+      ...body,
+      canvasId: agentRunCanvasIdFor(project)
+    }, {
+      analyze: agentAnalyzerFor(context, projectDir)
+    });
+    return sendJson(response, 201, { agentRun });
+  }
+
+  const agentRunAnswersMatch = /^\/api\/agent-runs\/([^/]+)\/answers$/.exec(pathname);
+  if (request.method === "POST" && agentRunAnswersMatch) {
+    const body = await readJson(request, context.registry);
+    assertExpectedCanvasScope(project, body);
+    const agentRun = await answerAgentRunClarifications(projectDir, {
+      canvasId: agentRunCanvasIdFor(project),
+      agentRunId: agentRunAnswersMatch[1],
+      answers: body.answers
+    }, {
+      analyze: agentAnalyzerFor(context, projectDir)
+    });
+    return sendJson(response, 200, { agentRun });
+  }
+
+  const agentRunMatch = /^\/api\/agent-runs\/([^/]+)$/.exec(pathname);
+  if (request.method === "GET" && agentRunMatch) {
+    const agentRun = await readAgentRun(projectDir, {
+      canvasId: agentRunCanvasIdFor(project),
+      agentRunId: agentRunMatch[1]
+    });
+    return sendJson(response, 200, { agentRun });
+  }
+
+  if (request.method === "PATCH" && agentRunMatch) {
+    const body = await readJson(request, context.registry);
+    assertExpectedCanvasScope(project, body);
+    const agentRun = await selectAgentRunSkill(projectDir, {
+      canvasId: agentRunCanvasIdFor(project),
+      agentRunId: agentRunMatch[1],
+      selectedSkillId: body.selectedSkillId,
+      optimizedPrompt: body.optimizedPrompt
+    });
+    return sendJson(response, 200, { agentRun });
   }
 
   if (request.method === "GET" && pathname === "/api/search") {
@@ -963,6 +1018,14 @@ function aliasProjectId(registry, previousId, nextId) {
 
 function storeOptionsFor(project) {
   return { canvasId: project.canvasId || null };
+}
+
+function agentRunCanvasIdFor(project) {
+  return project.canvasId || "shared";
+}
+
+function agentAnalyzerFor(context, projectDir) {
+  return context.agentAnalyzer || createCodexAgentAnalyzer({ projectDir });
 }
 
 function jobScopeFor(project) {

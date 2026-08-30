@@ -35,6 +35,17 @@ const undoButton = document.querySelector('[data-history-action="undo"]');
 const redoButton = document.querySelector('[data-history-action="redo"]');
 const imageUploadInput = document.querySelector("#imageUploadInput");
 const colorPalette = document.querySelector("#colorPalette");
+const agentWorkbench = document.querySelector("#agentWorkbench");
+const agentPanel = document.querySelector("#agentPanel");
+const skillPanel = document.querySelector("#skillPanel");
+const agentRequestForm = document.querySelector("#agentRequestForm");
+const agentRequest = document.querySelector("#agentRequest");
+const agentAnalyzeButton = document.querySelector("#agentAnalyzeButton");
+const agentSourceSummary = document.querySelector("#agentSourceSummary");
+const agentRunStatus = document.querySelector("#agentRunStatus");
+const agentRunDetails = document.querySelector("#agentRunDetails");
+const agentClarifications = document.querySelector("#agentClarifications");
+const agentSkillList = document.querySelector("#agentSkillList");
 const canvasSearch = createCanvasSearchUi();
 const defaultCanvasTool = "select";
 const zoomWheelSensitivity = 0.0024;
@@ -159,6 +170,47 @@ const translations = {
     uploadDone: "Image uploaded.",
     uploadFailed: "Image upload failed.",
     downloadFailed: "Download failed.",
+    agentWorkbench: "Museboard Agent workbench",
+    agentTab: "Agent",
+    skillTab: "Skill",
+    agentHeading: "Image direction",
+    agentSourceEmpty: "Select one to three images on the canvas.",
+    agentSourceSelected: "selected image.",
+    agentSourceSelectedPlural: "selected images.",
+    agentSourceTooMany: "images selected. Keep up to three image references.",
+    agentRequestLabel: "What would you like to make or change?",
+    agentRequestPlaceholder: "Describe the outcome, what to preserve, and the output you need.",
+    agentAnalyze: "Analyze request",
+    agentConfirm: "Confirm generation",
+    agentConfirmPending: "Image execution is connected in the next integration stage.",
+    skillHeading: "Skills",
+    skillHint: "Choose a direction before analysis, or replace the recommendation before generation.",
+    agentAnalyzeFailed: "Could not analyze this request.",
+    agentSkillFailed: "Could not select this Skill.",
+    agentSkillLoadFailed: "Could not load Skills.",
+    agentSourcesInvalid: "Select one to three image references first.",
+    agentRequestRequired: "Describe the result you need before analysis.",
+    agentAnalyzing: "Analyzing request…",
+    agentBriefUpdating: "Updating brief…",
+    agentClarificationsRequired: "Answer each required clarification before continuing.",
+    agentClarificationPlaceholder: "Your answer",
+    agentClarificationChoose: "Choose an option",
+    agentClarificationUpdate: "Update brief",
+    agentClarificationFailed: "Could not update the brief.",
+    agentSkillSelected: "Selected",
+    agentStatusNeedsClarification: "Clarification needed before generation.",
+    agentStatusReady: "Brief ready. Review it and explicitly confirm generation in the next integration stage.",
+    agentStatusRunning: "Generation is running.",
+    agentStatusSucceeded: "Generation completed.",
+    agentStatusPartial: "Some outputs completed.",
+    agentStatusFailed: "This Agent run failed.",
+    agentStatusCancelled: "This Agent run was cancelled.",
+    agentBriefChanges: "Changes",
+    agentBriefPreserve: "Preserve",
+    agentBriefStyle: "Style",
+    agentBriefComposition: "Composition",
+    agentBriefOutputs: "Outputs",
+    agentBriefSelectedSkill: "Selected Skill",
     actions: {
       "quick-edit": "Quick Edit",
       "remove-bg": "Remove BG",
@@ -314,6 +366,47 @@ const translations = {
     uploadDone: "图片已上传。",
     uploadFailed: "图片上传失败。",
     downloadFailed: "下载失败。",
+    agentWorkbench: "Museboard 智能工作面板",
+    agentTab: "智能助手",
+    skillTab: "技能",
+    agentHeading: "图片方向",
+    agentSourceEmpty: "请在画布上选择一至三张图片。",
+    agentSourceSelected: "张图片已选中。",
+    agentSourceSelectedPlural: "张图片已选中。",
+    agentSourceTooMany: "张图片已选中。请保留至多三张参考图。",
+    agentRequestLabel: "你想生成或修改什么？",
+    agentRequestPlaceholder: "描述目标结果、需要保留的内容与输出要求。",
+    agentAnalyze: "分析需求",
+    agentConfirm: "确认生成",
+    agentConfirmPending: "图片执行将在下一阶段接入。",
+    skillHeading: "技能",
+    skillHint: "可在分析前选择方向，或在生成前替换推荐技能。",
+    agentAnalyzeFailed: "无法分析此需求。",
+    agentSkillFailed: "无法选择此技能。",
+    agentSkillLoadFailed: "无法加载技能。",
+    agentSourcesInvalid: "请先选择一至三张参考图。",
+    agentRequestRequired: "请先描述你需要的结果。",
+    agentAnalyzing: "正在分析需求…",
+    agentBriefUpdating: "正在更新需求简报…",
+    agentClarificationsRequired: "请回答每个必填澄清问题后再继续。",
+    agentClarificationPlaceholder: "请输入答案",
+    agentClarificationChoose: "请选择一项",
+    agentClarificationUpdate: "更新简报",
+    agentClarificationFailed: "无法更新需求简报。",
+    agentSkillSelected: "已选择",
+    agentStatusNeedsClarification: "生成前需要补充澄清信息。",
+    agentStatusReady: "需求简报已就绪。请审核，并在下一阶段明确确认生成。",
+    agentStatusRunning: "正在生成。",
+    agentStatusSucceeded: "生成已完成。",
+    agentStatusPartial: "部分输出已完成。",
+    agentStatusFailed: "此智能助手任务失败。",
+    agentStatusCancelled: "此智能助手任务已取消。",
+    agentBriefChanges: "修改项",
+    agentBriefPreserve: "保留项",
+    agentBriefStyle: "风格",
+    agentBriefComposition: "构图",
+    agentBriefOutputs: "输出",
+    agentBriefSelectedSkill: "已选技能",
     actions: {
       "quick-edit": "快捷编辑",
       "remove-bg": "去背景",
@@ -412,6 +505,10 @@ let versionDiffOverlay = null;
 let versionDiffHeatmapToken = 0;
 let appUpdateInfo = null;
 let appUpdateBusy = false;
+let agentSkills = [];
+let activeAgentRun = null;
+let agentDraftSkillId = null;
+let activeAgentTab = "agent";
 const composerImageActions = new Set(["quick-edit", "expand", "edit-text"]);
 const immediateImageJobActions = new Set(["remove-bg", "edit-elements"]);
 const quickEditMarkupTools = new Set(["annotation", "pencil", "text"]);
@@ -430,6 +527,7 @@ const singleSelectionActions = new Set([
   "copy-file-mention"
 ]);
 
+initAgentWorkbench();
 initLayerBrowserUi();
 initPromptHistoryUi();
 applyLanguage();
@@ -438,6 +536,7 @@ renderCanvasHistoryStatus();
 renderColorPalette();
 await loadProjects();
 await loadState();
+await loadAgentSkills().catch((error) => setAgentStatus(error?.message || t("agentSkillLoadFailed"), { error: true }));
 refreshAppUpdateStatus({ checkRemote: true }).catch(() => {});
 setInterval(loadState, 2000);
 
@@ -725,7 +824,7 @@ document.addEventListener("pointerdown", (event) => {
   }
   if (isSettingsEvent || isPromptHistoryEvent || isLayerBrowserEvent || isCanvasSearchEvent) return;
   if (!quickEditObjectId && !selectedId && selectedIds.size === 0) return;
-  if (event.target.closest(".canvas-object, .selection-toolbar, .quick-edit-composer, .color-palette, .tool-dock, .prompt-history-panel, .prompt-history-button, .layer-browser-panel, .layer-browser-button, .canvas-search")) return;
+  if (event.target.closest(".canvas-object, .selection-toolbar, .quick-edit-composer, .color-palette, .tool-dock, .prompt-history-panel, .prompt-history-button, .layer-browser-panel, .layer-browser-button, .canvas-search, .agent-workbench")) return;
   closeQuickEdit({ keepPrompt: true });
   selectObject(null);
 });
@@ -1510,6 +1609,284 @@ async function copyPromptToClipboard(prompt) {
   }
 }
 
+function initAgentWorkbench() {
+  if (!agentWorkbench) return;
+  agentWorkbench.querySelectorAll("[data-agent-tab]").forEach((button) => {
+    button.addEventListener("click", () => setAgentTab(button.dataset.agentTab));
+  });
+  agentRequestForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitAgentRequest().catch((error) => setAgentStatus(error?.message || t("agentAnalyzeFailed"), { error: true }));
+  });
+  agentSkillList?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-skill-id]");
+    if (!button) return;
+    selectAgentSkill(button.dataset.skillId).catch((error) => setAgentStatus(error?.message || t("agentSkillFailed"), { error: true }));
+  });
+  renderAgentSourceSelection();
+  renderAgentRun();
+}
+
+async function loadAgentSkills() {
+  const payload = await requestAgentApi("/api/skills");
+  agentSkills = Array.isArray(payload.skills) ? payload.skills : [];
+  renderAgentSkills();
+}
+
+function setAgentTab(tab) {
+  activeAgentTab = tab === "skill" ? "skill" : "agent";
+  agentPanel.hidden = activeAgentTab !== "agent";
+  skillPanel.hidden = activeAgentTab !== "skill";
+  agentWorkbench.querySelectorAll("[data-agent-tab]").forEach((button) => {
+    button.setAttribute("aria-selected", String(button.dataset.agentTab === activeAgentTab));
+  });
+}
+
+function selectedAgentSources() {
+  if (!state?.objects) return [];
+  return [...selectedIds]
+    .map((id) => state.objects.find((object) => object.id === id))
+    .filter((object) => object && (object.type || "image") === "image");
+}
+
+function renderAgentSourceSelection() {
+  if (!agentSourceSummary) return;
+  const sources = selectedAgentSources();
+  const count = sources.length;
+  const valid = count >= 1 && count <= 3;
+  agentSourceSummary.classList.toggle("has-sources", valid);
+  if (count === 0) {
+    agentSourceSummary.textContent = t("agentSourceEmpty");
+  } else if (count > 3) {
+    agentSourceSummary.textContent = `${count} ${t("agentSourceTooMany")}`;
+  } else {
+    agentSourceSummary.textContent = `${count} ${t(count === 1 ? "agentSourceSelected" : "agentSourceSelectedPlural")}`;
+  }
+  if (agentAnalyzeButton) agentAnalyzeButton.disabled = !valid;
+}
+
+async function submitAgentRequest() {
+  const sources = selectedAgentSources();
+  const rawRequest = agentRequest?.value.trim() || "";
+  if (sources.length < 1 || sources.length > 3) throw new Error(t("agentSourcesInvalid"));
+  if (!rawRequest) throw new Error(t("agentRequestRequired"));
+  agentAnalyzeButton.disabled = true;
+  setAgentStatus(t("agentAnalyzing"));
+  try {
+    const payload = await requestAgentApi("/api/agent-runs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: agentRunId(),
+        sourceObjectIds: sources.map((source) => source.id),
+        rawRequest
+      })
+    });
+    activeAgentRun = payload.agentRun;
+    if (agentDraftSkillId && agentDraftSkillId !== activeAgentRun.selectedSkillId) {
+      await selectAgentSkill(agentDraftSkillId, { preserveStatus: true });
+    }
+    renderAgentRun();
+    setAgentTab("agent");
+  } finally {
+    renderAgentSourceSelection();
+  }
+}
+
+function agentRunId() {
+  const suffix = globalThis.crypto?.randomUUID?.().replace(/-/g, "")
+    || `${Date.now()}${Math.random().toString(16).slice(2)}`;
+  return `agent_${suffix}`;
+}
+
+async function selectAgentSkill(skillId, { preserveStatus = false } = {}) {
+  if (!agentSkills.some((skill) => skill.id === skillId)) throw new Error("That Skill is not available in this canvas.");
+  agentDraftSkillId = skillId;
+  if (!activeAgentRun || !["needs_clarification", "ready"].includes(activeAgentRun.status)) {
+    renderAgentSkills();
+    return;
+  }
+  const payload = await requestAgentApi(`/api/agent-runs/${encodeURIComponent(activeAgentRun.id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      selectedSkillId: skillId,
+      optimizedPrompt: activeAgentRun.optimizedPrompt
+    })
+  });
+  activeAgentRun = payload.agentRun;
+  if (!preserveStatus) setAgentStatus(`${t("agentSkillSelected")} ${skillName(skillId)}.`);
+  renderAgentRun();
+}
+
+async function submitAgentClarifications() {
+  if (!activeAgentRun || activeAgentRun.status !== "needs_clarification") return;
+  const answers = {};
+  for (const question of activeAgentRun.clarificationQuestions) {
+    const field = agentClarifications.querySelector(`[name="${CSS.escape(question.id)}"]`);
+    const answer = field?.value?.trim() || "";
+    if (question.required && !answer) throw new Error(t("agentClarificationsRequired"));
+    if (answer) answers[question.id] = answer;
+  }
+  const submit = agentClarifications.querySelector("button[type='submit']");
+  if (submit) submit.disabled = true;
+  setAgentStatus(t("agentBriefUpdating"));
+  try {
+    const payload = await requestAgentApi(`/api/agent-runs/${encodeURIComponent(activeAgentRun.id)}/answers`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ answers })
+    });
+    activeAgentRun = payload.agentRun;
+    renderAgentRun();
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+}
+
+function renderAgentRun() {
+  if (!agentRunStatus || !agentRunDetails || !agentClarifications) return;
+  agentRunDetails.replaceChildren();
+  agentClarifications.replaceChildren();
+  if (!activeAgentRun) {
+    agentRunStatus.textContent = "";
+    agentRunStatus.classList.remove("is-error");
+    renderAgentSkills();
+    return;
+  }
+
+  agentRunStatus.textContent = agentRunStatusLabel(activeAgentRun.status);
+  agentRunStatus.classList.remove("is-error");
+  const brief = activeAgentRun.structuredBrief;
+  if (brief) {
+    appendAgentBriefList(agentRunDetails, t("agentBriefChanges"), brief.modifications);
+    appendAgentBriefList(agentRunDetails, t("agentBriefPreserve"), brief.preservationRules);
+    appendAgentBriefText(agentRunDetails, t("agentBriefStyle"), brief.style);
+    appendAgentBriefText(agentRunDetails, t("agentBriefComposition"), brief.composition);
+    appendAgentBriefList(agentRunDetails, t("agentBriefOutputs"), activeAgentRun.plannedOutputs.map((output) => `${output.label}: ${output.purpose}`));
+    appendAgentBriefText(agentRunDetails, t("agentBriefSelectedSkill"), skillName(activeAgentRun.selectedSkillId));
+  }
+  if (activeAgentRun.status === "needs_clarification") renderAgentClarifications();
+  agentDraftSkillId = activeAgentRun.selectedSkillId || agentDraftSkillId;
+  renderAgentSkills();
+}
+
+function renderAgentClarifications() {
+  const form = document.createElement("form");
+  form.className = "agent-clarifications";
+  for (const question of activeAgentRun.clarificationQuestions) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "agent-clarification";
+    const label = document.createElement("label");
+    label.textContent = question.required ? `${question.prompt} *` : question.prompt;
+    const field = question.options.length ? document.createElement("select") : document.createElement("input");
+    field.name = question.id;
+    field.required = question.required;
+    if (field instanceof HTMLInputElement) field.placeholder = t("agentClarificationPlaceholder");
+    if (field instanceof HTMLSelectElement) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = t("agentClarificationChoose");
+      field.append(placeholder);
+      question.options.forEach((option) => {
+        const choice = document.createElement("option");
+        choice.value = option;
+        choice.textContent = option;
+        field.append(choice);
+      });
+    }
+    field.value = activeAgentRun.clarificationAnswers?.[question.id] || "";
+    wrapper.append(label, field);
+    form.append(wrapper);
+  }
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.textContent = t("agentClarificationUpdate");
+  form.append(submit);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitAgentClarifications().catch((error) => setAgentStatus(error?.message || t("agentClarificationFailed"), { error: true }));
+  });
+  agentClarifications.append(form);
+}
+
+function appendAgentBriefList(container, title, values) {
+  if (!Array.isArray(values) || values.length === 0) return;
+  const section = document.createElement("section");
+  section.className = "agent-brief-section";
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const list = document.createElement("ul");
+  values.forEach((value) => {
+    const item = document.createElement("li");
+    item.textContent = value;
+    list.append(item);
+  });
+  section.append(heading, list);
+  container.append(section);
+}
+
+function appendAgentBriefText(container, title, value) {
+  if (!value) return;
+  const section = document.createElement("section");
+  section.className = "agent-brief-section";
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const text = document.createElement("span");
+  text.textContent = value;
+  section.append(heading, text);
+  container.append(section);
+}
+
+function renderAgentSkills() {
+  if (!agentSkillList) return;
+  agentSkillList.replaceChildren();
+  for (const skill of agentSkills) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "agent-skill-card";
+    button.dataset.skillId = skill.id;
+    button.classList.toggle("active", skill.id === (activeAgentRun?.selectedSkillId || agentDraftSkillId));
+    const name = document.createElement("strong");
+    name.textContent = skill.name;
+    const description = document.createElement("span");
+    description.textContent = skill.description;
+    button.append(name, description);
+    agentSkillList.append(button);
+  }
+}
+
+function setAgentStatus(message, { error = false } = {}) {
+  if (!agentRunStatus) return;
+  agentRunStatus.textContent = message || "";
+  agentRunStatus.classList.toggle("is-error", error);
+}
+
+function agentRunStatusLabel(status) {
+  const labels = {
+    analyzing: t("agentAnalyzing"),
+    needs_clarification: t("agentStatusNeedsClarification"),
+    ready: t("agentStatusReady"),
+    running: t("agentStatusRunning"),
+    succeeded: t("agentStatusSucceeded"),
+    partial: t("agentStatusPartial"),
+    failed: t("agentStatusFailed"),
+    cancelled: t("agentStatusCancelled")
+  };
+  return labels[status] || status;
+}
+
+function skillName(skillId) {
+  return agentSkills.find((skill) => skill.id === skillId)?.name || skillId || "Not selected";
+}
+
+async function requestAgentApi(pathname, options = {}) {
+  const response = await fetch(apiPath(pathname), options);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Agent request failed (${response.status}).`);
+  return payload;
+}
+
 async function loadState() {
   if (drag || resize || marquee || pan || drawing || annotationDraft || editingTextId || editingAnnotationId || canvasHistory.busy || isComposerActive()) return;
   const response = await fetch(apiPath("/api/state"));
@@ -1537,6 +1914,7 @@ async function loadState() {
   }
   state.selection = selectedId;
   render();
+  renderAgentSourceSelection();
   if (autoFocusObject) frameCanvasObject(autoFocusObject);
 }
 
@@ -3159,6 +3537,7 @@ function setLocalSelection(ids, { fromUser = true } = {}) {
   selectedId = nextIds.length === 1 ? nextIds[0] : null;
   hasUserSelection = nextIds.length > 0 && fromUser;
   if (state) state.selection = selectedId;
+  renderAgentSourceSelection();
 }
 
 function sameIdSet(left, right) {
@@ -3359,7 +3738,7 @@ function shouldStartPan(event) {
 
 function isCanvasPanBlockedTarget(target) {
   if (!(target instanceof Element)) return false;
-  return Boolean(target.closest("button, input, textarea, select, [contenteditable='true'], .selection-toolbar, .quick-edit-composer, .layer-browser-panel"));
+  return Boolean(target.closest("button, input, textarea, select, [contenteditable='true'], .selection-toolbar, .quick-edit-composer, .layer-browser-panel, .agent-workbench"));
 }
 
 function startPan(event) {
@@ -4815,7 +5194,7 @@ function frameSelectedImageForViewing(object) {
 
 function isShortcutEditingTarget(target) {
   if (isEditableTarget(target)) return true;
-  return Boolean(target.closest("button, [role='button'], .selection-toolbar, .quick-edit-composer, .settings-menu, .color-palette, .prompt-history-panel, .layer-browser-panel, .canvas-search"));
+  return Boolean(target.closest("button, [role='button'], .selection-toolbar, .quick-edit-composer, .settings-menu, .color-palette, .prompt-history-panel, .layer-browser-panel, .canvas-search, .agent-workbench"));
 }
 
 function canvasHistoryShortcut(event) {
@@ -4829,11 +5208,11 @@ function canvasHistoryShortcut(event) {
 }
 
 function isNativeUndoTarget(target) {
-  return isEditableTarget(target) || Boolean(target.closest(".quick-edit-composer, .prompt-history-panel, .layer-browser-panel, .canvas-search"));
+  return isEditableTarget(target) || Boolean(target.closest(".quick-edit-composer, .prompt-history-panel, .layer-browser-panel, .canvas-search, .agent-workbench"));
 }
 
 function isDeleteEditingTarget(target) {
-  if (target.closest("input, textarea, .layer-browser-panel")) return true;
+  if (target.closest("input, textarea, .layer-browser-panel, .agent-workbench")) return true;
   const editableText = target.closest(".text-content[contenteditable='true']");
   const editableAnnotation = target.closest(".annotation-label[contenteditable='true']");
   return Boolean((editableText && editingTextId === selectedId)
@@ -5072,6 +5451,13 @@ function applyLanguage() {
   document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
     element.placeholder = t(element.dataset.i18nPlaceholder);
   });
+  if (agentWorkbench) {
+    agentWorkbench.setAttribute("aria-label", t("agentWorkbench"));
+    agentWorkbench.querySelector(".agent-workbench-tabs")?.setAttribute("aria-label", t("agentWorkbench"));
+    document.querySelector("#agentConfirmButton")?.setAttribute("title", t("agentConfirmPending"));
+    renderAgentSourceSelection();
+    renderAgentRun();
+  }
   if (quickEditAction) {
     quickEditPrompt.placeholder = composerPlaceholder(quickEditAction);
     if (quickEditHint) quickEditHint.textContent = t("quickEditHint");
@@ -5219,7 +5605,7 @@ function pointerToWorld(event) {
 
 function shouldUseNativeWheel(target) {
   if (!(target instanceof Element)) return false;
-  return Boolean(target.closest("input, textarea, select, [contenteditable='true'], .quick-edit-composer, .canvas-search, .prompt-history-panel, .layer-browser-panel"));
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true'], .quick-edit-composer, .canvas-search, .prompt-history-panel, .layer-browser-panel, .agent-workbench"));
 }
 
 function normalizedWheelDelta(event) {

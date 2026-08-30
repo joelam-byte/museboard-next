@@ -38,7 +38,8 @@ button {
 }
 
 .app-shell {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 336px;
   width: 100vw;
   height: 100vh;
   min-width: 0;
@@ -50,6 +51,230 @@ button {
   height: 100%;
   min-width: 0;
   min-height: 0;
+}
+
+.agent-workbench {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.agent-workbench-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin: 14px 14px 0;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.agent-workbench-tabs button {
+  min-width: 0;
+  min-height: 32px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.agent-workbench-tabs button[aria-selected="true"] {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(22, 25, 30, 0.12);
+}
+
+.agent-workbench-panel {
+  min-height: 0;
+  padding: 18px 16px;
+  overflow-y: auto;
+}
+
+.agent-workbench-panel[hidden] {
+  display: none;
+}
+
+.agent-workbench-heading h2 {
+  margin: 0;
+  color: #24272c;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.agent-workbench-heading p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-source-summary.has-sources {
+  color: #3c4652;
+  font-weight: 650;
+}
+
+.agent-request-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.agent-request-form label,
+.agent-clarification label {
+  color: #4f545c;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.agent-request-form textarea,
+.agent-clarification input,
+.agent-clarification select {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  outline: none;
+  background: #fff;
+  padding: 9px 10px;
+  color: #262a30;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-request-form textarea {
+  min-height: 104px;
+  resize: vertical;
+}
+
+.agent-request-form textarea:focus,
+.agent-clarification input:focus,
+.agent-clarification select:focus {
+  border-color: rgba(47, 128, 237, 0.72);
+  box-shadow: 0 0 0 3px rgba(47, 128, 237, 0.12);
+}
+
+.agent-request-form button,
+.agent-clarifications button,
+.agent-confirm-button {
+  min-height: 36px;
+  border-radius: 9px;
+  background: #252a31;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.agent-request-form button:disabled,
+.agent-confirm-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.agent-run-status:empty,
+.agent-run-details:empty,
+.agent-clarifications:empty {
+  display: none;
+}
+
+.agent-run-status {
+  margin-top: 16px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #eef4fc;
+  color: #3c5d83;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.agent-run-status.is-error {
+  background: #fff0f0;
+  color: #a13a3a;
+}
+
+.agent-run-details {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.agent-brief-section {
+  display: grid;
+  gap: 4px;
+}
+
+.agent-brief-section strong {
+  color: #383d44;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.agent-brief-section span,
+.agent-brief-section li {
+  color: #555a62;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-brief-section ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 17px;
+}
+
+.agent-clarifications {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.agent-clarification {
+  display: grid;
+  gap: 6px;
+}
+
+.agent-skill-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.agent-skill-card {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px;
+  text-align: left;
+}
+
+.agent-skill-card:hover,
+.agent-skill-card:focus-visible,
+.agent-skill-card.active {
+  border-color: rgba(47, 128, 237, 0.48);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(47, 128, 237, 0.08);
+}
+
+.agent-skill-card strong {
+  color: #30343a;
+  font-size: 12px;
+}
+
+.agent-skill-card span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .board-shell {
@@ -2953,3 +3178,18 @@ button {
     padding: 5px;
   }
 }
+
+@media (max-width: 800px) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(272px, 40vh);
+  }
+
+  .agent-workbench {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .agent-workbench-panel {
+    padding: 14px 14px 16px;
+  }

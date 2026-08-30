@@ -342,6 +342,34 @@
           <div id="colorPalette" class="color-palette" aria-label="Tool colors" hidden></div>
         </section>
       </main>
+      <aside id="agentWorkbench" class="agent-workbench" aria-label="Museboard Agent workbench">
+        <div class="agent-workbench-tabs" role="tablist" aria-label="Agent workbench tabs">
+          <button type="button" data-agent-tab="agent" role="tab" aria-selected="true" aria-controls="agentPanel" data-i18n="agentTab">Agent</button>
+          <button type="button" data-agent-tab="skill" role="tab" aria-selected="false" aria-controls="skillPanel" data-i18n="skillTab">Skill</button>
+        </div>
+        <section id="agentPanel" class="agent-workbench-panel" role="tabpanel">
+          <div class="agent-workbench-heading">
+            <h2 data-i18n="agentHeading">Image direction</h2>
+            <p id="agentSourceSummary" class="agent-source-summary" data-i18n="agentSourceEmpty">Select one to three images on the canvas.</p>
+          </div>
+          <form id="agentRequestForm" class="agent-request-form">
+            <label for="agentRequest" data-i18n="agentRequestLabel">What would you like to make or change?</label>
+            <textarea id="agentRequest" rows="5" data-i18n-placeholder="agentRequestPlaceholder" placeholder="Describe the outcome, what to preserve, and the output you need."></textarea>
+            <button id="agentAnalyzeButton" type="submit" data-i18n="agentAnalyze">Analyze request</button>
+          </form>
+          <div id="agentRunStatus" class="agent-run-status" aria-live="polite"></div>
+          <div id="agentRunDetails" class="agent-run-details"></div>
+          <div id="agentClarifications" class="agent-clarifications"></div>
+          <button id="agentConfirmButton" class="agent-confirm-button" type="button" disabled title="Image execution is connected in the next integration stage." data-i18n="agentConfirm">Confirm generation</button>
+        </section>
+        <section id="skillPanel" class="agent-workbench-panel" role="tabpanel" hidden>
+          <div class="agent-workbench-heading">
+            <h2 data-i18n="skillHeading">Skills</h2>
+            <p data-i18n="skillHint">Choose a direction before analysis, or replace the recommendation before generation.</p>
+          </div>
+          <div id="agentSkillList" class="agent-skill-list" aria-live="polite"></div>
+        </section>
+      </aside>
     </div>
 
     <div id="toast" class="toast" hidden></div>

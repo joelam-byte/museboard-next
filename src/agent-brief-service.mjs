@@ -160,13 +160,14 @@ export async function selectAgentRunSkill(projectDir, input, { now = new Date().
 }
 
 async function buildAnalysisContext(projectDir, run) {
-  const state = await readState(projectDir, { canvasId: run.canvasId });
+  const stateCanvasId = stateCanvasIdForAgentRun(run.canvasId);
+  const state = await readState(projectDir, { canvasId: stateCanvasId });
   const sourcesById = new Map(state.objects.map((object) => [object.id, object]));
   const sources = [];
   for (const objectId of run.sourceObjectIds) {
     const object = sourcesById.get(objectId);
     if (!object) throw new Error(`Source image ${JSON.stringify(objectId)} was not found.`);
-    sources.push(await sourceContext(projectDir, run.canvasId, object));
+    sources.push(await sourceContext(projectDir, stateCanvasId, object));
   }
   return {
     request: {
@@ -184,6 +185,10 @@ async function buildAnalysisContext(projectDir, run) {
       outputCount: { ...descriptor.outputCount }
     }))
   };
+}
+
+function stateCanvasIdForAgentRun(canvasId) {
+  return canvasId === "shared" ? null : canvasId;
 }
 
 async function produceValidatedCandidate({ analyze, repair, context }) {

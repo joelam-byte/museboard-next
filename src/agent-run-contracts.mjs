@@ -128,7 +128,7 @@ export function validateStructuredBrief(value) {
   return value;
 }
 
-export function validateAgentBriefCandidate(value) {
+export function validateAgentBriefCandidate(value, { sourceImageCount = null } = {}) {
   assertStrictObject(value, "AgentBriefCandidate", [
     "recommendedSkillId",
     "structuredBrief",
@@ -156,7 +156,25 @@ export function validateAgentBriefCandidate(value) {
     }
   });
   assertUniqueValues(value.plannedOutputs.map((output) => output.id), "AgentBriefCandidate.plannedOutputs", "output ids");
+  if (sourceImageCount !== null) {
+    validateSkillCompatibility(value.recommendedSkillId, {
+      sourceImageCount,
+      plannedOutputCount: value.plannedOutputs.length
+    }, "AgentBriefCandidate.recommendedSkillId");
+  }
   return value;
+}
+
+export function validateSkillCompatibility(skillId, { sourceImageCount, plannedOutputCount }, path = "SkillDescriptor.id") {
+  assertSkillId(skillId, path);
+  const descriptor = SKILL_DESCRIPTORS.find((candidate) => candidate.id === skillId);
+  if (!Number.isInteger(sourceImageCount) || sourceImageCount < descriptor.sourceImageCount.min || sourceImageCount > descriptor.sourceImageCount.max) {
+    invalid(`does not support ${sourceImageCount} source image${sourceImageCount === 1 ? "" : "s"}`, path);
+  }
+  if (!Number.isInteger(plannedOutputCount) || plannedOutputCount < descriptor.outputCount.min || plannedOutputCount > descriptor.outputCount.max) {
+    invalid(`does not support ${plannedOutputCount} planned output${plannedOutputCount === 1 ? "" : "s"}`, path);
+  }
+  return descriptor;
 }
 
 export function validatePlannedOutput(value, path = "PlannedOutput") {
@@ -354,6 +372,18 @@ function validateAgentRunState(run) {
     if (run.plannedOutputs.length === 0) invalid(`requires at least one item when status is ${run.status}`, "AgentRun.plannedOutputs");
   }
   if (run.status === "failed" && run.error === null) invalid("is required when status is failed", "AgentRun.error");
+  if (run.recommendedSkillId !== null && run.plannedOutputs.length > 0) {
+    validateSkillCompatibility(run.recommendedSkillId, {
+      sourceImageCount: run.sourceObjectIds.length,
+      plannedOutputCount: run.plannedOutputs.length
+    }, "AgentRun.recommendedSkillId");
+  }
+  if (run.selectedSkillId !== null && run.plannedOutputs.length > 0) {
+    validateSkillCompatibility(run.selectedSkillId, {
+      sourceImageCount: run.sourceObjectIds.length,
+      plannedOutputCount: run.plannedOutputs.length
+    }, "AgentRun.selectedSkillId");
+  }
 }
 
 function assertStrictObject(value, path, fields) {

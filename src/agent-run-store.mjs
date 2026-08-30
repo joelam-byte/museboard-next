@@ -33,10 +33,40 @@ export class AgentRunCorruptError extends Error {
   }
 }
 
+export class AgentRunAlreadyExistsError extends Error {
+  constructor({ canvasId, agentRunId, filePath }) {
+    super(`AgentRun ${JSON.stringify(agentRunId)} already exists for canvas ${JSON.stringify(canvasId)} at ${filePath}.`);
+    this.name = "AgentRunAlreadyExistsError";
+    this.code = "agent-run-already-exists";
+    this.statusCode = 409;
+    this.canvasId = canvasId;
+    this.agentRunId = agentRunId;
+    this.filePath = filePath;
+  }
+}
+
 export async function writeAgentRun(projectDir, run) {
   validateAgentRun(run);
   const filePath = agentRunPathFor(projectDir, run.canvasId, run.id);
   return withRunLock(filePath, async () => writeAgentRunFile(filePath, run));
+}
+
+export async function createAgentRunIfAbsent(projectDir, run) {
+  validateAgentRun(run);
+  const filePath = agentRunPathFor(projectDir, run.canvasId, run.id);
+  return withRunLock(filePath, async () => {
+    try {
+      await fs.lstat(filePath);
+    } catch (error) {
+      if (error?.code === "ENOENT") return writeAgentRunFile(filePath, run);
+      throw error;
+    }
+    throw new AgentRunAlreadyExistsError({
+      canvasId: run.canvasId,
+      agentRunId: run.id,
+      filePath
+    });
+  });
 }
 
 export async function readAgentRun(projectDir, { canvasId, agentRunId }) {

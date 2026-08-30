@@ -8,8 +8,8 @@ import {
   answerAgentRunClarifications,
   selectAgentRunSkill
 } from "../src/agent-brief-service.mjs";
-import { readAgentRun } from "../src/agent-run-store.mjs";
-import { jobsDirFor } from "../src/paths.mjs";
+import { readAgentRun, updateAgentRun } from "../src/agent-run-store.mjs";
+import { assetsDirFor, jobsDirFor, statePathFor } from "../src/paths.mjs";
 import { addImage } from "../src/store.mjs";
 
 const pngOne = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
@@ -443,4 +443,254 @@ test("a user can replace the selected stable Skill and optimized prompt before c
   const unchanged = await readAgentRun(projectDir, { canvasId, agentRunId: analyzed.id });
   assert.equal(unchanged.selectedSkillId, "remove-bg");
   assert.equal(unchanged.optimizedPrompt, optimizedPrompt);
+});
+
+test("a duplicate analysis id is rejected without overwriting its existing AgentRun", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-duplicate-run-"));
+  const canvasId = "canvas-duplicate-run";
+  const source = await addImage(projectDir, {
+    dataUrl: `data:image/png;base64,${pngOne}`,
+    name: "source.png",
+    allowDuplicate: true
+  }, { canvasId });
+  const initial = await analyzeAgentRun(projectDir, {
+    id: "run-duplicate",
+    canvasId,
+    sourceObjectIds: [source.id],
+    rawRequest: "Replace the existing headline while preserving the product image."
+  }, {
+    analyze: async () => validCandidate({
+      clarificationQuestions: [{
+        id: "headline",
+        prompt: "What exact replacement headline should appear?",
+        required: true,
+        options: []
+      }]
+    })
+  });
+  let secondAnalyzerCalls = 0;
+
+  await assert.rejects(
+    () => analyzeAgentRun(projectDir, {
+      id: initial.id,
+      canvasId,
+      sourceObjectIds: [source.id],
+      rawRequest: "This second request must not replace the original run."
+    }, {
+      analyze: async () => {
+        secondAnalyzerCalls += 1;
+        return validCandidate();
+      }
+    }),
+    (error) => error.code === "agent-run-already-exists" && error.statusCode === 409
+  );
+
+  assert.equal(secondAnalyzerCalls, 0);
+  assert.deepEqual(await readAgentRun(projectDir, {
+    canvasId,
+    agentRunId: initial.id
+  }), initial);
+});
+
+test("reanalysis treats a repeated required question with a stored answer as non-blocking", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-repeated-question-"));
+  const canvasId = "canvas-repeated-question";
+  const source = await addImage(projectDir, {
+    dataUrl: `data:image/png;base64,${pngOne}`,
+    name: "source.png",
+    allowDuplicate: true
+  }, { canvasId });
+  const question = {
+    id: "headline",
+    prompt: "What exact replacement headline should appear?",
+    required: true,
+    options: []
+  };
+  await analyzeAgentRun(projectDir, {
+    id: "run-repeated-question",
+    canvasId,
+    sourceObjectIds: [source.id],
+    rawRequest: "Replace the existing headline while preserving the product image."
+  }, {
+    analyze: async () => validCandidate({ clarificationQuestions: [question] })
+  });
+
+  const ready = await answerAgentRunClarifications(projectDir, {
+    canvasId,
+    agentRunId: "run-repeated-question",
+    answers: { headline: "Better mornings start here" }
+  }, {
+    analyze: async () => validCandidate({ clarificationQuestions: [question] })
+  });
+
+  assert.equal(ready.status, "ready");
+  assert.deepEqual(ready.clarificationAnswers, { headline: "Better mornings start here" });
+});
+
+test("clarification answers reject unknown and duplicate question ids without changing the run", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-answer-ids-"));
+  const canvasId = "canvas-answer-ids";
+  const source = await addImage(projectDir, {
+    dataUrl: `data:image/png;base64,${pngOne}`,
+    name: "source.png",
+    allowDuplicate: true
+  }, { canvasId });
+  const questions = [
+    {
+      id: "market",
+      prompt: "Which market is this campaign for?",
+      required: true,
+      options: ["Singapore", "Japan"]
+    },
+    {
+      id: "legal-copy",
+      prompt: "What required legal copy must appear?",
+      required: true,
+      options: []
+    }
+  ];
+  await analyzeAgentRun(projectDir, {
+    id: "run-answer-ids",
+    canvasId,
+    sourceObjectIds: [source.id],
+    rawRequest: "Create a compliant campaign image for the intended market."
+  }, {
+    analyze: async () => validCandidate({ clarificationQuestions: questions })
+  });
+
+  await assert.rejects(
+    () => answerAgentRunClarifications(projectDir, {
+      canvasId,
+      agentRunId: "run-answer-ids",
+      answers: { "obsolete-question": "This question is not active." }
+    }),
+    (error) => error.code === "agent-brief-clarification-answer-invalid" && error.questionIds[0] === "obsolete-question"
+  );
+
+  await updateAgentRun(projectDir, {
+    canvasId,
+    agentRunId: "run-answer-ids"
+  }, (current) => ({
+    ...current,
+    clarificationAnswers: { market: "Singapore" }
+  }));
+  const beforeDuplicate = await readAgentRun(projectDir, {
+    canvasId,
+    agentRunId: "run-answer-ids"
+  });
+
+  await assert.rejects(
+    () => answerAgentRunClarifications(projectDir, {
+      canvasId,
+      agentRunId: "run-answer-ids",
+      answers: {
+        market: "Japan",
+        "legal-copy": "For illustrative purposes only."
+      }
+    }),
+    (error) => error.code === "agent-brief-clarification-answer-invalid" && error.questionIds[0] === "market"
+  );
+  assert.deepEqual(await readAgentRun(projectDir, {
+    canvasId,
+    agentRunId: "run-answer-ids"
+  }), beforeDuplicate);
+});
+
+test("AgentRun routing rejects incompatible source and planned-output counts before persisting", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-skill-counts-"));
+  const canvasId = "canvas-skill-counts";
+  const sources = [];
+  for (let index = 0; index < 3; index += 1) {
+    sources.push(await addImage(projectDir, {
+      dataUrl: `data:image/png;base64,${pngOne}`,
+      name: `source-${index}.png`,
+      allowDuplicate: true
+    }, { canvasId }));
+  }
+  let repairs = 0;
+  const repaired = await analyzeAgentRun(projectDir, {
+    id: "run-incompatible-source-count",
+    canvasId,
+    sourceObjectIds: sources.map((source) => source.id),
+    rawRequest: "Create a coordinated campaign from all three product references."
+  }, {
+    analyze: async () => validCandidate({ recommendedSkillId: "remove-bg" }),
+    repair: async () => {
+      repairs += 1;
+      return validCandidate({
+        recommendedSkillId: "product-marketing-set",
+        plannedOutputs: [
+          validPlannedOutput(),
+          validPlannedOutput({ id: "output-detail", label: "Detail image", purpose: "Close product detail" })
+        ]
+      });
+    }
+  });
+  assert.equal(repairs, 1);
+  assert.equal(repaired.selectedSkillId, "product-marketing-set");
+  assert.equal(repaired.plannedOutputs.length, 2);
+
+  await assert.rejects(
+    () => selectAgentRunSkill(projectDir, {
+      canvasId,
+      agentRunId: repaired.id,
+      selectedSkillId: "quick-edit",
+      optimizedPrompt: "Apply a local edit to all selected references."
+    }),
+    (error) => error.code === "agent-run-validation" && error.message.includes("selectedSkillId")
+  );
+});
+
+test("analysis rejects unsupported source assets and symbolic links inside the canvas asset directory", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-source-path-"));
+  const canvasId = "canvas-source-path";
+  const source = await addImage(projectDir, {
+    dataUrl: `data:image/png;base64,${pngOne}`,
+    name: "source.png",
+    allowDuplicate: true
+  }, { canvasId });
+  const statePath = statePathFor(projectDir, canvasId);
+  const setSourceAssetPath = async (assetPath) => {
+    const state = JSON.parse(await fs.readFile(statePath, "utf8"));
+    state.objects.find((object) => object.id === source.id).assetPath = assetPath;
+    await fs.writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+  };
+  const expectRejectedSource = async (id) => {
+    let analyzerCalls = 0;
+    await assert.rejects(
+      () => analyzeAgentRun(projectDir, {
+        id,
+        canvasId,
+        sourceObjectIds: [source.id],
+        rawRequest: "Analyze this source without exposing files outside this canvas."
+      }, {
+        analyze: async () => {
+          analyzerCalls += 1;
+          return validCandidate();
+        }
+      }),
+      (error) => error.code === "agent-brief-source-asset-invalid" && error.statusCode === 400
+    );
+    assert.equal(analyzerCalls, 0);
+  };
+
+  const assetsDir = assetsDirFor(projectDir, canvasId);
+  const unsupportedAsset = path.join(assetsDir, "unsupported-source.txt");
+  await fs.writeFile(unsupportedAsset, "not an image");
+  await setSourceAssetPath(unsupportedAsset);
+  await expectRejectedSource("run-unsupported-asset");
+
+  const outsideAsset = path.join(projectDir, "outside.txt");
+  await fs.writeFile(outsideAsset, "do not disclose");
+  const linkPath = path.join(assetsDir, "linked-source.png");
+  try {
+    await fs.symlink(outsideAsset, linkPath, "file");
+  } catch (error) {
+    if (error.code === "EPERM" || error.code === "EACCES") {
+      return;
+    }
+    throw error;
+  }
+  await setSourceAssetPath(linkPath);
+  await expectRejectedSource("run-linked-asset");
 });

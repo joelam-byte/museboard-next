@@ -10,7 +10,7 @@ import {
 } from "../src/agent-brief-service.mjs";
 import { readAgentRun, updateAgentRun } from "../src/agent-run-store.mjs";
 import { assetsDirFor, jobsDirFor, statePathFor } from "../src/paths.mjs";
-import { addImage } from "../src/store.mjs";
+import { addImage, addObject } from "../src/store.mjs";
 
 const pngOne = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 const expectedSkillIds = [
@@ -693,4 +693,98 @@ test("analysis rejects unsupported source assets and symbolic links inside the c
   }
   await setSourceAssetPath(linkPath);
   await expectRejectedSource("run-linked-asset");
+});
+
+test("analysis preserves GIF and AVIF canvas source assets", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-modern-images-"));
+  const canvasId = "canvas-modern-images";
+  const formats = [
+    {
+      extension: "gif",
+      mimeType: "image/gif",
+      data: "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+    },
+    {
+      extension: "avif",
+      mimeType: "image/avif",
+      data: Buffer.from("\x00\x00\x00\x18ftypavif\x00\x00\x00\x00avif", "binary").toString("base64")
+    }
+  ];
+
+  for (const format of formats) {
+    const source = await addImage(projectDir, {
+      dataUrl: `data:${format.mimeType};base64,${format.data}`,
+      name: `source.${format.extension}`,
+      allowDuplicate: true
+    }, { canvasId });
+    let receivedContext;
+    const run = await analyzeAgentRun(projectDir, {
+      id: `run-${format.extension}`,
+      canvasId,
+      sourceObjectIds: [source.id],
+      rawRequest: `Analyze this ${format.extension.toUpperCase()} product reference without generation.`
+    }, {
+      analyze: async (context) => {
+        receivedContext = context;
+        return validCandidate();
+      }
+    });
+    assert.equal(run.status, "ready");
+    assert.equal(receivedContext.sources[0].mimeType, format.mimeType);
+    assert.equal(receivedContext.sources[0].dataUrl, `data:${format.mimeType};base64,${format.data}`);
+  }
+});
+
+test("analysis accepts only image objects with a usable local asset or HTTP image URL", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-source-boundary-"));
+  const canvasId = "canvas-source-boundary";
+  const remoteImage = await addImage(projectDir, {
+    url: "https://images.example.test/product.png",
+    name: "remote-product.png",
+    allowDuplicate: true
+  }, { canvasId });
+  let remoteContext;
+  await analyzeAgentRun(projectDir, {
+    id: "run-remote-image",
+    canvasId,
+    sourceObjectIds: [remoteImage.id],
+    rawRequest: "Analyze the remote product image without starting a generation."
+  }, {
+    analyze: async (context) => {
+      remoteContext = context;
+      return validCandidate();
+    }
+  });
+  assert.equal(remoteContext.sources[0].dataUrl, null);
+  assert.equal(remoteContext.sources[0].url, "https://images.example.test/product.png");
+
+  const text = await addObject(projectDir, {
+    type: "text",
+    text: "This is not an image."
+  }, { canvasId });
+  const assertRejectedBeforeAnalysis = async (id, sourceObjectId) => {
+    let analyzerCalls = 0;
+    await assert.rejects(
+      () => analyzeAgentRun(projectDir, {
+        id,
+        canvasId,
+        sourceObjectIds: [sourceObjectId],
+        rawRequest: "Reject invalid sources before sending anything to analysis."
+      }, {
+        analyze: async () => {
+          analyzerCalls += 1;
+          return validCandidate();
+        }
+      }),
+      (error) => error.code === "agent-brief-source-asset-invalid" && error.statusCode === 400
+    );
+    assert.equal(analyzerCalls, 0);
+  };
+  await assertRejectedBeforeAnalysis("run-text-source", text.id);
+
+  const statePath = statePathFor(projectDir, canvasId);
+  const state = JSON.parse(await fs.readFile(statePath, "utf8"));
+  state.objects.find((object) => object.id === remoteImage.id).src = "file:///private/source.png";
+  await fs.writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+  await assertRejectedBeforeAnalysis("run-invalid-remote-source", remoteImage.id);
 });

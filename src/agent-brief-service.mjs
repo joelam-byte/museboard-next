@@ -17,7 +17,9 @@ const imageMimeTypes = new Map([
   [".jpg", "image/jpeg"],
   [".jpeg", "image/jpeg"],
   [".png", "image/png"],
-  [".webp", "image/webp"]
+  [".webp", "image/webp"],
+  [".gif", "image/gif"],
+  [".avif", "image/avif"]
 ]);
 
 export class AgentBriefSchemaError extends Error {
@@ -240,7 +242,9 @@ function isPlainObject(value) {
 }
 
 async function sourceContext(projectDir, canvasId, object) {
+  if (object?.type !== "image") throw new AgentBriefSourceAssetError();
   const asset = object.assetPath ? await readSourceAsset(projectDir, canvasId, object.assetPath) : null;
+  const remoteUrl = asset === null ? validatedRemoteImageUrl(object.src) : null;
   const mimeType = asset?.mimeType || mimeTypeFor(object);
   let dataUrl = null;
   if (asset) {
@@ -251,7 +255,7 @@ async function sourceContext(projectDir, canvasId, object) {
     name: object.name || "",
     mimeType,
     dataUrl,
-    url: dataUrl === null && typeof object.src === "string" ? object.src : null,
+    url: dataUrl === null ? remoteUrl : null,
     naturalWidth: Number.isFinite(object.naturalWidth) ? object.naturalWidth : null,
     naturalHeight: Number.isFinite(object.naturalHeight) ? object.naturalHeight : null,
     displayWidth: Number.isFinite(object.width) ? object.width : null,
@@ -296,6 +300,20 @@ async function readSourceAsset(projectDir, canvasId, assetPath) {
   return { bytes, mimeType };
 }
 
+function validatedRemoteImageUrl(value) {
+  if (typeof value !== "string" || !value.trim()) throw new AgentBriefSourceAssetError();
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new AgentBriefSourceAssetError();
+  }
+  if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password) {
+    throw new AgentBriefSourceAssetError();
+  }
+  return url.toString();
+}
+
 function isInsidePath(directoryPath, candidatePath) {
   const relative = path.relative(directoryPath, candidatePath);
   return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
@@ -306,8 +324,21 @@ function hasImageSignature(bytes, mimeType) {
     return bytes.length >= 8 && bytes[0] === 0x89 && bytes.toString("ascii", 1, 4) === "PNG";
   }
   if (mimeType === "image/jpeg") return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (mimeType === "image/gif") {
+    if (bytes.length < 6) return false;
+    const signature = bytes.toString("ascii", 0, 6);
+    return signature === "GIF87a" || signature === "GIF89a";
+  }
   if (mimeType === "image/webp") {
     return bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP";
+  }
+  if (mimeType === "image/avif") {
+    if (bytes.length < 12 || bytes.toString("ascii", 4, 8) !== "ftyp") return false;
+    const brands = [bytes.toString("ascii", 8, 12)];
+    for (let offset = 16; offset + 4 <= Math.min(bytes.length, 64); offset += 4) {
+      brands.push(bytes.toString("ascii", offset, offset + 4));
+    }
+    return brands.some((brand) => brand === "avif" || brand === "avis");
   }
   return false;
 }

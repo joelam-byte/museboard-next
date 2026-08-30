@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createServer } from "../src/server.mjs";
-import { prepareAgentRunForJob } from "../src/agent-run-execution.mjs";
+import { prepareAgentRunForJob, recordAgentRunJobFailure, recordAgentRunJobSuccess } from "../src/agent-run-execution.mjs";
 
 const pngOne = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
@@ -262,6 +262,139 @@ test("AgentRun confirmation starts one existing image job and is idempotent", as
     const fetchedResponse = await fetch(`${base}api/agent-runs/agent-confirm-run${search}`);
     const fetched = await fetchedResponse.json();
     assert.deepEqual(fetched.agentRun.childJobIds, ["job-confirmed-1"]);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+test("Product Marketing Set confirmation queues fixed outputs and retries only failed slots", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-product-api-"));
+  const persistentRegistryPath = path.join(projectDir, "registry.json");
+  const starts = [];
+  const businessImageJobFactory = async (_projectDir, input) => {
+    starts.push(input);
+    return {
+      id: input.id,
+      action: input.action,
+      outputId: input.outputId,
+      status: "queued",
+      agentRunId: input.agentRunId
+    };
+  };
+  const productCandidate = {
+    ...readyCandidate(),
+    recommendedSkillId: "product-marketing-set",
+    optimizedPrompt: "Create a premium, accurate four-image tumbler campaign.",
+    plannedOutputs: [
+      ["main", "Main image", "Primary listing image"],
+      ["benefit", "Benefit image", "Key benefit image"],
+      ["scene", "Scene image", "Lifestyle scene image"],
+      ["detail", "Detail image", "Product detail image"]
+    ].map(([id, label, purpose]) => ({
+      id,
+      label,
+      purpose,
+      format: "png",
+      width: 1080,
+      height: 1350,
+      aspectRatio: "4:5",
+      status: "planned",
+      jobId: null,
+      outputObjectIds: [],
+      error: null
+    }))
+  };
+  const { server, url } = await createServer({
+    projectDir,
+    port: 0,
+    autoCollect: false,
+    persistentRegistryPath,
+    agentAnalyzer: async () => productCandidate,
+    businessImageJobFactory
+  });
+  const base = url.replace(/\?.*/, "");
+  const search = new URL(url).search;
+
+  try {
+    const imageResponse = await fetch(`${base}api/images${search}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dataUrl: `data:image/png;base64,${pngOne}`, name: "tumbler.png" })
+    });
+    const image = await imageResponse.json();
+
+    const createdResponse = await fetch(`${base}api/agent-runs${search}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "agent-product-run",
+        sourceObjectIds: [image.id],
+        rawRequest: "Create a marketplace image set for this tumbler: main image, benefit image, lifestyle scene, and detail."
+      })
+    });
+    assert.equal(createdResponse.status, 201);
+
+    const confirmResponse = await fetch(`${base}api/agent-runs/agent-product-run/confirm${search}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        skillInputs: {
+          "sales-channel": "Marketplace listing",
+          "primary-benefit": "Double-wall insulation keeps drinks warm for longer.",
+          "target-audience": "Daily commuters",
+          "visual-style": "Clean studio",
+          "preserve-elements": "Keep the lid geometry and logo."
+        }
+      })
+    });
+    assert.equal(confirmResponse.status, 202);
+    const confirmed = await confirmResponse.json();
+    assert.equal(confirmed.agentRun.status, "running");
+    assert.equal(confirmed.imageJobs.length, 4);
+    assert.deepEqual(starts.map((input) => input.outputId), ["main", "benefit", "scene", "detail"]);
+    assert.deepEqual(confirmed.agentRun.skillInputs, {
+      "sales-channel": "Marketplace listing",
+      "primary-benefit": "Double-wall insulation keeps drinks warm for longer.",
+      "target-audience": "Daily commuters",
+      "visual-style": "Clean studio",
+      "preserve-elements": "Keep the lid geometry and logo."
+    });
+
+    await recordAgentRunJobSuccess(projectDir, {
+      canvasId: "shared",
+      agentRunId: "agent-product-run",
+      jobId: confirmed.agentRun.plannedOutputs.find((output) => output.id === "main").jobId,
+      outputObjectIds: ["image-main"]
+    });
+    await recordAgentRunJobFailure(projectDir, {
+      canvasId: "shared",
+      agentRunId: "agent-product-run",
+      jobId: confirmed.agentRun.plannedOutputs.find((output) => output.id === "benefit").jobId,
+      error: new Error("Benefit generation failed.")
+    });
+    await recordAgentRunJobSuccess(projectDir, {
+      canvasId: "shared",
+      agentRunId: "agent-product-run",
+      jobId: confirmed.agentRun.plannedOutputs.find((output) => output.id === "scene").jobId,
+      outputObjectIds: ["image-scene"]
+    });
+    await recordAgentRunJobSuccess(projectDir, {
+      canvasId: "shared",
+      agentRunId: "agent-product-run",
+      jobId: confirmed.agentRun.plannedOutputs.find((output) => output.id === "detail").jobId,
+      outputObjectIds: ["image-detail"]
+    });
+
+    const retryResponse = await fetch(`${base}api/agent-runs/agent-product-run/retry${search}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({})
+    });
+    assert.equal(retryResponse.status, 202);
+    const retried = await retryResponse.json();
+    assert.equal(retried.agentRun.status, "running");
+    assert.equal(retried.imageJobs.length, 1);
+    assert.equal(retried.imageJobs[0].outputId, "benefit");
+    assert.deepEqual(starts.map((input) => input.outputId), ["main", "benefit", "scene", "detail", "benefit"]);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

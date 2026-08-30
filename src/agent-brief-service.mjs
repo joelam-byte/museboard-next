@@ -146,10 +146,18 @@ export async function selectAgentRunSkill(projectDir, input, { now = new Date().
     if (Date.parse(now) < Date.parse(current.timestamps.updatedAt)) {
       throw new AgentRunValidationError("must not move backward", { path: "AgentRun.timestamps.updatedAt" });
     }
+    const descriptor = SKILL_DESCRIPTORS.find((skill) => skill.id === input.selectedSkillId);
+    const plannedOutputs = isBusinessSkillDescriptor(descriptor)
+      ? plannedOutputsForBusinessSkill(descriptor)
+      : descriptor?.outputCount.max === 1 && current.plannedOutputs.length !== 1
+        ? [resetPlannedOutput(current.plannedOutputs[0])]
+        : current.plannedOutputs;
     const next = {
       ...current,
       selectedSkillId: input.selectedSkillId,
+      skillInputs: isBusinessSkillDescriptor(descriptor) ? {} : current.skillInputs,
       optimizedPrompt: input.optimizedPrompt,
+      plannedOutputs,
       timestamps: {
         ...current.timestamps,
         updatedAt: now
@@ -159,6 +167,30 @@ export async function selectAgentRunSkill(projectDir, input, { now = new Date().
   });
 }
 
+function isBusinessSkillDescriptor(descriptor) {
+  return Boolean(descriptor && ["xiaohongshu-cover", "product-marketing-set"].includes(descriptor.id));
+}
+
+function plannedOutputsForBusinessSkill(descriptor) {
+  return descriptor.outputSpecs.map((spec) => ({
+    ...spec,
+    status: "planned",
+    jobId: null,
+    outputObjectIds: [],
+    error: null
+  }));
+}
+
+function resetPlannedOutput(output) {
+  if (!output) throw new Error("AgentRun has no output available for single-output Skill selection.");
+  return {
+    ...output,
+    status: "planned",
+    jobId: null,
+    outputObjectIds: [],
+    error: null
+  };
+}
 async function buildAnalysisContext(projectDir, run) {
   const stateCanvasId = stateCanvasIdForAgentRun(run.canvasId);
   const state = await readState(projectDir, { canvasId: stateCanvasId });

@@ -10,6 +10,7 @@ import {
   createAgentRun,
   transitionAgentRun,
   validateAgentRun,
+  validateAgentBriefCandidate,
   validateSkillDescriptor,
   validateStructuredBrief
 } from "../src/agent-run-contracts.mjs";
@@ -42,9 +43,9 @@ function validBrief() {
 
 function validPlannedOutput(overrides = {}) {
   return {
-    id: "output-main",
-    label: "Main image",
-    purpose: "Primary campaign image",
+    id: "cover",
+    label: "Xiaohongshu cover",
+    purpose: "A finished Chinese social cover with title, layout, and preserved source elements.",
     format: "png",
     width: 1080,
     height: 1440,
@@ -88,6 +89,34 @@ test("stable skill descriptors expose exactly the seven approved ids", () => {
   );
 });
 
+test("business Skill descriptors expose their field recipes and fixed output slots", () => {
+  const cover = SKILL_DESCRIPTORS.find((descriptor) => descriptor.id === "xiaohongshu-cover");
+  assert.equal(cover.category, "social-media");
+  assert.equal(cover.backendAction, "xiaohongshu-cover");
+  assert.deepEqual(cover.briefFields.map((field) => field.id), [
+    "content-type", "headline", "headline-style", "headline-position", "preserve-elements"
+  ]);
+  assert.deepEqual(cover.outputSpecs, [{
+    id: "cover",
+    label: "Xiaohongshu cover",
+    purpose: "A finished Chinese social cover with title, layout, and preserved source elements.",
+    format: "png",
+    width: 1080,
+    height: 1440,
+    aspectRatio: "3:4"
+  }]);
+
+  const productSet = SKILL_DESCRIPTORS.find((descriptor) => descriptor.id === "product-marketing-set");
+  assert.equal(productSet.category, "e-commerce");
+  assert.equal(productSet.backendAction, "product-marketing-set");
+  assert.deepEqual(productSet.briefFields.map((field) => field.id), [
+    "sales-channel", "primary-benefit", "target-audience", "visual-style", "preserve-elements"
+  ]);
+  assert.deepEqual(productSet.outputSpecs.map((output) => output.id), ["main", "benefit", "scene", "detail"]);
+  assert.deepEqual(productSet.outputSpecs.map((output) => output.aspectRatio), ["4:5", "4:5", "4:5", "4:5"]);
+  assert.equal(productSet.clarificationRules[0], "Ask only when a required marketing field would materially change the output.");
+});
+
 test("AgentRun accepts one to three unique source object ids and rejects other counts", () => {
   assert.deepEqual(Object.keys(initialRun()), [
     "id",
@@ -99,6 +128,7 @@ test("AgentRun accepts one to three unique source object ids and rejects other c
     "structuredBrief",
     "clarificationQuestions",
     "clarificationAnswers",
+    "skillInputs",
     "optimizedPrompt",
     "plannedOutputs",
     "childJobIds",
@@ -145,6 +175,10 @@ test("runtime schemas reject malformed nested contracts with a precise field pat
     () => validateAgentRun({ ...run, plannedOutputs: [validPlannedOutput({ format: "psd" })] }),
     (error) => error.code === "agent-run-validation" && error.message.includes("plannedOutputs[0].format")
   );
+  assert.throws(
+    () => validateAgentRun({ ...run, skillInputs: { headline: 3 } }),
+    (error) => error.code === "agent-run-validation" && error.message.includes("skillInputs.headline")
+  );
 });
 
 test("state transitions follow the controlled lifecycle and update timestamps", () => {
@@ -184,7 +218,7 @@ test("state transitions follow the controlled lifecycle and update timestamps", 
   assert.equal(analyzing.status, "analyzing", "transitioning must not mutate the prior snapshot");
 });
 
-test("state machine rejects skipped, reversed, and terminal transitions", () => {
+test("state machine allows failed-output retries but rejects skipped and irreversible terminal transitions", () => {
   const analyzing = initialRun();
   assert.throws(
     () => transitionAgentRun(analyzing, "running", readyPatch()),
@@ -201,9 +235,16 @@ test("state machine rejects skipped, reversed, and terminal transitions", () => 
   const cancelled = transitionAgentRun(running, "cancelled");
   assert.equal(partial.status, "partial");
   assert.equal(cancelled.status, "cancelled");
+  assert.equal(transitionAgentRun(failed, "running").status, "running");
+  assert.equal(transitionAgentRun(partial, "running").status, "running");
+  const succeeded = transitionAgentRun(running, "succeeded");
   assert.throws(
-    () => transitionAgentRun(failed, "running"),
-    (error) => error.code === "agent-run-transition" && error.message.includes("failed -> running")
+    () => transitionAgentRun(succeeded, "running"),
+    (error) => error.code === "agent-run-transition" && error.message.includes("succeeded -> running")
+  );
+  assert.throws(
+    () => transitionAgentRun(cancelled, "running"),
+    (error) => error.code === "agent-run-transition" && error.message.includes("cancelled -> running")
   );
 });
 
@@ -390,6 +431,37 @@ test("a fresh module instance restores a persisted run after restart", async () 
   });
   assert.equal(restored.status, "running");
   assert.deepEqual(restored.childJobIds, ["job-recover"]);
+});
++test("business Agent briefs must use their fixed output recipe before confirmation", () => {
+  const candidate = {
+    recommendedSkillId: "product-marketing-set",
+    structuredBrief: validBrief(),
+    clarificationQuestions: [],
+    optimizedPrompt: "Create a fixed product marketing set.",
+    plannedOutputs: [
+      "main",
+      "benefit",
+      "scene",
+      "wrong-detail"
+    ].map((id) => ({
+      id,
+      label: id,
+      purpose: "A product marketing output.",
+      format: "png",
+      width: 1080,
+      height: 1350,
+      aspectRatio: "4:5",
+      status: "planned",
+      jobId: null,
+      outputObjectIds: [],
+      error: null
+    }))
+  };
+
+  assert.throws(
+    () => validateAgentBriefCandidate(candidate, { sourceImageCount: 1 }),
+    (error) => error.code === "agent-run-validation" && error.message.includes("fixed output recipe")
+  );
 });
 
 test("AgentRun storage leaves a legacy codex-canvas.json readable and unchanged", async () => {

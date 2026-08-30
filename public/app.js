@@ -45,7 +45,9 @@ const agentSourceSummary = document.querySelector("#agentSourceSummary");
 const agentRunStatus = document.querySelector("#agentRunStatus");
 const agentRunDetails = document.querySelector("#agentRunDetails");
 const agentClarifications = document.querySelector("#agentClarifications");
+const agentSkillFields = document.querySelector("#agentSkillFields");
 const agentConfirmButton = document.querySelector("#agentConfirmButton");
+const agentRetryButton = document.querySelector("#agentRetryButton");
 const agentSkillList = document.querySelector("#agentSkillList");
 const canvasSearch = createCanvasSearchUi();
 const defaultCanvasTool = "select";
@@ -189,6 +191,10 @@ const translations = {
     agentConfirmEditText: "Edit Text keeps its existing OCR-and-replace workflow. Start it from the canvas toolbar.",
     agentConfirmUnsupported: "This Skill's multi-output execution is scheduled for a later V1 stage.",
     agentStartingGeneration: "Starting confirmed generation…",
+    agentSkillFields: "Skill details",
+    agentBusinessFieldsRequired: "Complete all required Skill fields before confirmation.",
+    agentRetryFailed: "Retry failed outputs",
+    agentRetrying: "Retrying failed outputs…",
     skillHeading: "Skills",
     skillHint: "Choose a direction before analysis, or replace the recommendation before generation.",
     agentAnalyzeFailed: "Could not analyze this request.",
@@ -390,6 +396,10 @@ const translations = {
     agentConfirmEditText: "编辑文字保留原有的 OCR 识别与替换流程，请从画布工具栏启动。",
     agentConfirmUnsupported: "此技能的多输出执行将在后续 V1 阶段接入。",
     agentStartingGeneration: "正在启动确认后的生成…",
+    agentSkillFields: "技能参数",
+    agentBusinessFieldsRequired: "请先完成所有必填技能参数。",
+    agentRetryFailed: "仅重试失败项",
+    agentRetrying: "正在重试失败项…",
     skillHeading: "技能",
     skillHint: "可在分析前选择方向，或在生成前替换推荐技能。",
     agentAnalyzeFailed: "无法分析此需求。",
@@ -1639,6 +1649,9 @@ function initAgentWorkbench() {
   agentConfirmButton?.addEventListener("click", () => {
     confirmActiveAgentRun().catch((error) => setAgentStatus(error?.message || t("agentAnalyzeFailed"), { error: true }));
   });
+  agentRetryButton?.addEventListener("click", () => {
+    retryActiveAgentRun().catch((error) => setAgentStatus(error?.message || t("agentAnalyzeFailed"), { error: true }));
+  });
   renderAgentSourceSelection();
   renderAgentRun();
 }
@@ -1763,25 +1776,54 @@ async function submitAgentClarifications() {
 async function confirmActiveAgentRun() {
   const unavailableReason = agentConfirmUnavailableReason(activeAgentRun);
   if (unavailableReason) throw new Error(unavailableReason);
+  const skillInputs = businessSkillInputsForRun(activeAgentRun);
+  if (skillInputs?.error) throw new Error(skillInputs.error);
   agentConfirmButton.disabled = true;
   setAgentStatus(t("agentStartingGeneration"));
   try {
     const payload = await requestAgentApi(`/api/agent-runs/${encodeURIComponent(activeAgentRun.id)}/confirm`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({})
+      body: JSON.stringify(skillInputs ? { skillInputs: skillInputs.values } : {})
     });
     activeAgentRun = payload.agentRun;
     renderAgentRun();
-    if (payload.imageJob?.id) {
-      const source = state?.objects?.find((object) => object.id === activeAgentRun.sourceObjectIds[0]);
-      if (source) frameJobPlacement(source.id, payload.imageJob.placeholder || null);
-      pollImageJob(payload.imageJob.id);
-    }
+    trackAgentImageJobs(payload);
     pollActiveAgentRun(activeAgentRun.id);
   } catch (error) {
     renderAgentRun();
     throw error;
+  }
+}
+
+async function retryActiveAgentRun() {
+  if (!activeAgentRun || !isBusinessAgentSkill(activeAgentRun.selectedSkillId)) return;
+  agentRetryButton.disabled = true;
+  setAgentStatus(t("agentRetrying"));
+  try {
+    const payload = await requestAgentApi(`/api/agent-runs/${encodeURIComponent(activeAgentRun.id)}/retry`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({})
+    });
+    activeAgentRun = payload.agentRun;
+    renderAgentRun();
+    trackAgentImageJobs(payload);
+    pollActiveAgentRun(activeAgentRun.id);
+  } finally {
+    renderAgentRun();
+  }
+}
+
+function trackAgentImageJobs(payload) {
+  const imageJobs = Array.isArray(payload.imageJobs)
+    ? payload.imageJobs
+    : payload.imageJob ? [payload.imageJob] : [];
+  const source = state?.objects?.find((object) => object.id === activeAgentRun?.sourceObjectIds?.[0]);
+  for (const imageJob of imageJobs) {
+    if (!imageJob?.id) continue;
+    if (source) frameJobPlacement(source.id, imageJob.placeholder || null);
+    pollImageJob(imageJob.id);
   }
 }
 
@@ -1810,10 +1852,12 @@ function renderAgentRun() {
   if (!agentRunStatus || !agentRunDetails || !agentClarifications) return;
   agentRunDetails.replaceChildren();
   agentClarifications.replaceChildren();
+  agentSkillFields?.replaceChildren();
   if (!activeAgentRun) {
     agentRunStatus.textContent = "";
     agentRunStatus.classList.remove("is-error");
     renderAgentSkills();
+    renderAgentRetryButton();
     renderAgentConfirmButton();
     return;
   }
@@ -1830,9 +1874,11 @@ function renderAgentRun() {
     appendAgentBriefText(agentRunDetails, t("agentBriefSelectedSkill"), skillName(activeAgentRun.selectedSkillId));
   }
   if (activeAgentRun.status === "needs_clarification") renderAgentClarifications();
+  renderAgentSkillFields();
   agentDraftSkillId = activeAgentRun.selectedSkillId || agentDraftSkillId;
   renderAgentSkills();
   renderAgentConfirmButton();
+  renderAgentRetryButton();
 }
 
 function renderAgentConfirmButton() {
@@ -1844,12 +1890,97 @@ function renderAgentConfirmButton() {
 
 function agentConfirmUnavailableReason(agentRun) {
   if (!agentRun || agentRun.status !== "ready") return t("agentConfirmPending");
+  if (isBusinessAgentSkill(agentRun.selectedSkillId)) {
+    if (agentRun.sourceObjectIds.length < 1 || agentRun.sourceObjectIds.length > 3) return t("agentSourcesInvalid");
+    return businessSkillInputsForRun(agentRun)?.error || "";
+  }
   if (agentRun.sourceObjectIds.length !== 1) return t("agentConfirmSingleSource");
   if (agentRun.selectedSkillId === "edit-text") return t("agentConfirmEditText");
   if (!confirmableAgentSkillIds.has(agentRun.selectedSkillId)) return t("agentConfirmUnsupported");
   return "";
 }
 
+function isBusinessAgentSkill(skillId) {
+  const descriptor = agentSkills.find((skill) => skill.id === skillId);
+  return Boolean(descriptor?.briefFields?.length && ["xiaohongshu-cover", "product-marketing-set"].includes(skillId));
+}
+
+function businessSkillInputsForRun(agentRun) {
+  if (!isBusinessAgentSkill(agentRun?.selectedSkillId)) return null;
+  const descriptor = agentSkills.find((skill) => skill.id === agentRun.selectedSkillId);
+  const values = {};
+  for (const field of descriptor.briefFields) {
+    const selector = '[data-agent-skill-field="' + CSS.escape(field.id) + '"]';
+    const control = agentSkillFields?.querySelector(selector);
+    const value = control ? control.value.trim() : String(agentRun.skillInputs?.[field.id] || "").trim();
+    if (field.required && !value) return { error: t("agentBusinessFieldsRequired") };
+    values[field.id] = value;
+  }
+  return { values };
+}
+
+function renderAgentSkillFields() {
+  if (!agentSkillFields || !activeAgentRun || activeAgentRun.status !== "ready") return;
+  const descriptor = agentSkills.find((skill) => skill.id === activeAgentRun.selectedSkillId);
+  if (!descriptor?.briefFields?.length || !isBusinessAgentSkill(descriptor.id)) return;
+
+  const section = document.createElement("section");
+  section.className = "agent-skill-field-section";
+  const heading = document.createElement("strong");
+  heading.textContent = t("agentSkillFields");
+  section.append(heading);
+
+  for (const field of descriptor.briefFields) {
+    const wrapper = document.createElement("label");
+    wrapper.className = "agent-skill-field";
+    const label = document.createElement("span");
+    label.textContent = field.required ? field.label + " *" : field.label;
+    const control = field.type === "select"
+      ? document.createElement("select")
+      : field.type === "textarea" ? document.createElement("textarea") : document.createElement("input");
+    control.dataset.agentSkillField = field.id;
+    control.required = field.required;
+    if (control instanceof HTMLInputElement) {
+      control.type = "text";
+      control.autocomplete = "off";
+    }
+    if (control instanceof HTMLTextAreaElement) {
+      control.rows = 3;
+      control.spellcheck = true;
+    }
+    if (control instanceof HTMLSelectElement) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = t("agentClarificationChoose");
+      control.append(placeholder);
+      for (const option of field.options || []) {
+        const choice = document.createElement("option");
+        choice.value = option;
+        choice.textContent = option;
+        control.append(choice);
+      }
+    }
+    control.value = activeAgentRun.skillInputs?.[field.id] || "";
+    control.addEventListener("input", () => renderAgentConfirmButton());
+    control.addEventListener("change", () => renderAgentConfirmButton());
+    wrapper.append(label, control);
+    section.append(wrapper);
+  }
+  agentSkillFields.append(section);
+}
+
+function renderAgentRetryButton() {
+  if (!agentRetryButton) return;
+  const canRetry = Boolean(
+    activeAgentRun
+    && isBusinessAgentSkill(activeAgentRun.selectedSkillId)
+    && ["partial", "failed"].includes(activeAgentRun.status)
+    && activeAgentRun.plannedOutputs.some((output) => output.status === "failed")
+  );
+  agentRetryButton.hidden = !canRetry;
+  agentRetryButton.disabled = !canRetry;
+  agentRetryButton.title = canRetry ? t("agentRetryFailed") : "";
+}
 function renderAgentClarifications() {
   const form = document.createElement("form");
   form.className = "agent-clarifications";

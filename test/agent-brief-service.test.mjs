@@ -37,9 +37,9 @@ function validBrief() {
 
 function validPlannedOutput(overrides = {}) {
   return {
-    id: "output-main",
-    label: "Main image",
-    purpose: "Primary campaign image",
+    id: "cover",
+    label: "Xiaohongshu cover",
+    purpose: "A finished Chinese social cover with title, layout, and preserved source elements.",
     format: "png",
     width: 1080,
     height: 1440,
@@ -195,13 +195,13 @@ test("an invalid recommended Skill is accepted only after exactly one schema rep
       assert.equal(candidate.recommendedSkillId, "made-up-skill");
       assert.equal(validationError.code, "agent-run-validation");
       assert.equal(context.request.agentRunId, "run-repair-success");
-      return validCandidate({ recommendedSkillId: "product-marketing-set" });
+      return validCandidate({ recommendedSkillId: "xiaohongshu-cover" });
     }
   });
 
   assert.equal(repairCalls, 1);
-  assert.equal(run.recommendedSkillId, "product-marketing-set");
-  assert.equal(run.selectedSkillId, "product-marketing-set");
+  assert.equal(run.recommendedSkillId, "xiaohongshu-cover");
+  assert.equal(run.selectedSkillId, "xiaohongshu-cover");
   assert.equal(run.status, "ready");
 });
 
@@ -620,15 +620,17 @@ test("AgentRun routing rejects incompatible source and planned-output counts bef
       return validCandidate({
         recommendedSkillId: "product-marketing-set",
         plannedOutputs: [
-          validPlannedOutput(),
-          validPlannedOutput({ id: "output-detail", label: "Detail image", purpose: "Close product detail" })
+          validPlannedOutput({ id: "main", label: "Main image", purpose: "Primary listing image", width: 1080, height: 1350, aspectRatio: "4:5" }),
+          validPlannedOutput({ id: "benefit", label: "Benefit image", purpose: "Key benefit image", width: 1080, height: 1350, aspectRatio: "4:5" }),
+          validPlannedOutput({ id: "scene", label: "Scene image", purpose: "Lifestyle scene image", width: 1080, height: 1350, aspectRatio: "4:5" }),
+          validPlannedOutput({ id: "detail", label: "Detail image", purpose: "Product detail image", width: 1080, height: 1350, aspectRatio: "4:5" })
         ]
       });
     }
   });
   assert.equal(repairs, 1);
   assert.equal(repaired.selectedSkillId, "product-marketing-set");
-  assert.equal(repaired.plannedOutputs.length, 2);
+  assert.equal(repaired.plannedOutputs.length, 4);
 
   await assert.rejects(
     () => selectAgentRunSkill(projectDir, {
@@ -733,6 +735,34 @@ test("analysis preserves GIF and AVIF canvas source assets", async () => {
     assert.equal(receivedContext.sources[0].mimeType, format.mimeType);
     assert.equal(receivedContext.sources[0].dataUrl, `data:${format.mimeType};base64,${format.data}`);
   }
+});
++test("selecting a business Skill replaces an incompatible plan with its fixed output slots", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-business-selection-"));
+  const canvasId = "canvas-business-selection";
+  const source = await addImage(projectDir, {
+    dataUrl: "data:image/png;base64," + pngOne,
+    name: "source.png",
+    allowDuplicate: true
+  }, { canvasId });
+  const run = await analyzeAgentRun(projectDir, {
+    id: "run-business-selection",
+    canvasId,
+    sourceObjectIds: [source.id],
+    rawRequest: "Create a complete product marketing set from this image."
+  }, {
+    analyze: async () => validCandidate({ recommendedSkillId: "quick-edit" })
+  });
+
+  const selected = await selectAgentRunSkill(projectDir, {
+    canvasId,
+    agentRunId: run.id,
+    selectedSkillId: "product-marketing-set",
+    optimizedPrompt: "Create a marketplace-ready product set."
+  });
+
+  assert.equal(selected.selectedSkillId, "product-marketing-set");
+  assert.deepEqual(selected.plannedOutputs.map((output) => output.id), ["main", "benefit", "scene", "detail"]);
+  assert.deepEqual(selected.plannedOutputs.map((output) => output.aspectRatio), ["4:5", "4:5", "4:5", "4:5"]);
 });
 
 test("analysis accepts only image objects with a usable local asset or HTTP image URL", async () => {

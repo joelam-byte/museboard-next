@@ -241,6 +241,47 @@ button {
   gap: 6px;
 }
 
+.agent-skill-fields {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.agent-skill-field-section {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.agent-skill-field-section > strong,
+.agent-skill-field > span {
+  color: #383d44;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.agent-skill-field {
+  display: grid;
+  gap: 5px;
+}
+
+.agent-skill-field input,
+.agent-skill-field select,
+.agent-skill-field textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: #30343a;
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 8px;
+  resize: vertical;
+}
 .agent-skill-list {
   display: grid;
   gap: 8px;

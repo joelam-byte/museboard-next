@@ -388,6 +388,30 @@ function promptForAction({ action, outputDir, userPrompt, transparentLayerMode =
     ].join("\n");
   }
 
+
+  if (action === "xiaohongshu-cover" || action === "product-marketing-set") {
+    const skillName = action === "xiaohongshu-cover" ? "xiaohongshu-cover" : "product-marketing-set";
+    return [
+      `Use the ${skillName} skill and the imagegen skill for this Museboard business image task.`,
+      "Optimize for latency: do not inspect unrelated repository files, do not produce variants, and do not run broad filesystem searches before generation.",
+      "",
+      "All attached images are approved reference inputs. Preserve their shared product or brand identity and use them only as visual references.",
+      "Follow this server-owned, user-confirmed recipe exactly:",
+      userPrompt,
+      "",
+      "Call imagegen exactly once to create exactly one finished output for this one fixed slot.",
+      "Meet the recipe's stated PNG dimensions and aspect ratio. Do not create a collage, contact sheet, side-by-side comparison, extra variants, watermark, or unrelated readable text.",
+      "Keep any requested Chinese headline exact; do not substitute a new slogan or add copy that is not in the recipe.",
+      "",
+      `Save or copy the final PNG into this exact directory: ${outputDir}`,
+      "Use a descriptive filename ending in .png.",
+      "As soon as the generated PNG exists, copy it into the output directory and finish.",
+      "Do not modify source files outside that output directory.",
+      "Do not ask follow-up questions. Do not perform extra visual QA unless generation clearly failed.",
+      "",
+      "Finish with a concise message containing the saved output path."
+    ].join("\n");
+  }
   if (action !== "remove-bg") {
     throw new Error(`Unsupported Codex image action: ${action}`);
   }

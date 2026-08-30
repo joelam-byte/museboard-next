@@ -16,8 +16,47 @@ export const SKILL_DESCRIPTORS = Object.freeze([
   skillDescriptor("remove-bg", "Remove BG", "Remove the source image background and preserve the foreground subject.", 1, 1, 1, 1),
   skillDescriptor("edit-text", "Edit Text", "Recognize and replace selected text while preserving the surrounding design.", 1, 1, 1, 1),
   skillDescriptor("edit-elements", "Edit Elements", "Separate source image elements into editable visual layers.", 1, 1, 1, 16),
-  skillDescriptor("xiaohongshu-cover", "Xiaohongshu Cover", "Create one Chinese social cover from one to three source images.", 1, 3, 1, 1),
-  skillDescriptor("product-marketing-set", "Product Marketing Set", "Create a coordinated set of independent product marketing images.", 1, 3, 1, 16)
+  skillDescriptor("xiaohongshu-cover", "Xiaohongshu Cover", "Create one Chinese social cover from one to three source images.", 1, 3, 1, 1, {
+    category: "social-media",
+    inputRules: [
+      "Use one to three selected canvas images as source references.",
+      "Generate only after the user explicitly confirms the completed brief."
+    ],
+    briefFields: [
+      briefField("content-type", "Content type", "select", true, ["Experience note", "Product recommendation", "Brand story"]),
+      briefField("headline", "Chinese headline", "text", true),
+      briefField("headline-style", "Headline style", "select", true, ["Bold editorial", "Friendly handwritten", "Minimal premium"]),
+      briefField("headline-position", "Headline position", "select", true, ["Top", "Center", "Bottom"]),
+      briefField("preserve-elements", "Elements to preserve", "textarea", false)
+    ],
+    outputSpecs: [
+      outputSpec("cover", "Xiaohongshu cover", "A finished Chinese social cover with title, layout, and preserved source elements.", 1080, 1440, "3:4")
+    ],
+    clarificationRules: ["Ask only when a required cover field would materially change the output."],
+    backendAction: "xiaohongshu-cover"
+  }),
+  skillDescriptor("product-marketing-set", "Product Marketing Set", "Create a coordinated set of independent product marketing images.", 1, 3, 4, 4, {
+    category: "e-commerce",
+    inputRules: [
+      "Use one to three selected canvas images as product references.",
+      "Generate the four planned outputs independently after explicit confirmation."
+    ],
+    briefFields: [
+      briefField("sales-channel", "Sales channel", "select", true, ["Marketplace listing", "Shopify store", "Meta ad", "General e-commerce"]),
+      briefField("primary-benefit", "Primary benefit", "text", true),
+      briefField("target-audience", "Target audience", "text", false),
+      briefField("visual-style", "Visual style", "select", true, ["Clean studio", "Premium editorial", "Warm lifestyle"]),
+      briefField("preserve-elements", "Elements to preserve", "textarea", false)
+    ],
+    outputSpecs: [
+      outputSpec("main", "Main image", "Primary listing image", 1080, 1350, "4:5"),
+      outputSpec("benefit", "Benefit image", "Key benefit image", 1080, 1350, "4:5"),
+      outputSpec("scene", "Scene image", "Lifestyle scene image", 1080, 1350, "4:5"),
+      outputSpec("detail", "Detail image", "Product detail image", 1080, 1350, "4:5")
+    ],
+    clarificationRules: ["Ask only when a required marketing field would materially change the output."],
+    backendAction: "product-marketing-set"
+  })
 ]);
 
 export const AGENT_RUN_STATUSES = Object.freeze([
@@ -50,8 +89,8 @@ const transitions = new Map([
   ["ready", new Set(["running"])],
   ["running", new Set(["succeeded", "partial", "failed", "cancelled"])],
   ["succeeded", new Set()],
-  ["partial", new Set()],
-  ["failed", new Set()],
+  ["partial", new Set(["running"])],
+  ["failed", new Set(["running"])],
   ["cancelled", new Set()]
 ]);
 const transitionPatchFields = new Set([
@@ -60,6 +99,7 @@ const transitionPatchFields = new Set([
   "structuredBrief",
   "clarificationQuestions",
   "clarificationAnswers",
+  "skillInputs",
   "optimizedPrompt",
   "plannedOutputs",
   "childJobIds",
@@ -93,6 +133,12 @@ export function validateSkillDescriptor(value) {
     "id",
     "name",
     "description",
+    "category",
+    "inputRules",
+    "briefFields",
+    "outputSpecs",
+    "clarificationRules",
+    "backendAction",
     "sourceImageCount",
     "outputCount",
     "requiresConfirmation"
@@ -100,6 +146,12 @@ export function validateSkillDescriptor(value) {
   assertSkillId(value.id, "SkillDescriptor.id");
   assertNonEmptyString(value.name, "SkillDescriptor.name", 120);
   assertNonEmptyString(value.description, "SkillDescriptor.description", 1000);
+  assertIdentifier(value.category, "SkillDescriptor.category");
+  assertStringArray(value.inputRules, "SkillDescriptor.inputRules", { min: 1, max: 20, itemMax: 1000 });
+  validateBriefFields(value.briefFields);
+  validateOutputSpecs(value.outputSpecs);
+  assertStringArray(value.clarificationRules, "SkillDescriptor.clarificationRules", { max: 20, itemMax: 1000 });
+  assertIdentifier(value.backendAction, "SkillDescriptor.backendAction");
   validateCountRange(value.sourceImageCount, "SkillDescriptor.sourceImageCount", { max: 3 });
   validateCountRange(value.outputCount, "SkillDescriptor.outputCount", { max: 16 });
   if (value.requiresConfirmation !== true) {
@@ -162,6 +214,7 @@ export function validateAgentBriefCandidate(value, { sourceImageCount = null } =
       plannedOutputCount: value.plannedOutputs.length
     }, "AgentBriefCandidate.recommendedSkillId");
   }
+  validateBusinessOutputRecipe(value.recommendedSkillId, value.plannedOutputs, "AgentBriefCandidate.plannedOutputs");
   return value;
 }
 
@@ -217,6 +270,7 @@ export function validateAgentRun(value) {
     "structuredBrief",
     "clarificationQuestions",
     "clarificationAnswers",
+    "skillInputs",
     "optimizedPrompt",
     "plannedOutputs",
     "childJobIds",
@@ -234,6 +288,7 @@ export function validateAgentRun(value) {
   if (value.structuredBrief !== null) validateStructuredBrief(value.structuredBrief);
   validateClarificationQuestions(value.clarificationQuestions);
   validateClarificationAnswers(value.clarificationAnswers);
+  validateSkillInputs(value.skillInputs);
   assertString(value.optimizedPrompt, "AgentRun.optimizedPrompt", 60_000);
   if (!Array.isArray(value.plannedOutputs)) invalid("must be an array", "AgentRun.plannedOutputs");
   value.plannedOutputs.forEach((output, index) => validatePlannedOutput(output, `AgentRun.plannedOutputs[${index}]`));
@@ -259,6 +314,7 @@ export function createAgentRun(input, { now = new Date().toISOString() } = {}) {
     structuredBrief: null,
     clarificationQuestions: [],
     clarificationAnswers: {},
+    skillInputs: {},
     optimizedPrompt: "",
     plannedOutputs: [],
     childJobIds: [],
@@ -300,15 +356,68 @@ export function transitionAgentRun(run, nextStatus, patch = {}, { now = new Date
   return validateAgentRun(next);
 }
 
-function skillDescriptor(id, name, description, sourceMin, sourceMax, outputMin, outputMax) {
+function skillDescriptor(id, name, description, sourceMin, sourceMax, outputMin, outputMax, options = {}) {
   return Object.freeze({
     id,
     name,
     description,
+    category: options.category || "image-edit",
+    inputRules: Object.freeze(options.inputRules || ["Use the selected canvas image as the source reference."]),
+    briefFields: Object.freeze((options.briefFields || []).map((field) => Object.freeze({
+      ...field,
+      options: Object.freeze([...(field.options || [])])
+    }))),
+    outputSpecs: Object.freeze((options.outputSpecs || [
+      outputSpec("result", "Result", "Output from the selected image Skill.", null, null, "source")
+    ]).map((spec) => Object.freeze({ ...spec }))),
+    clarificationRules: Object.freeze(options.clarificationRules || ["Ask only outcome-changing questions."]),
+    backendAction: options.backendAction || id,
     sourceImageCount: Object.freeze({ min: sourceMin, max: sourceMax }),
     outputCount: Object.freeze({ min: outputMin, max: outputMax }),
     requiresConfirmation: true
   });
+}
+
+function briefField(id, label, type, required, options = []) {
+  return { id, label, type, required, options };
+}
+
+function outputSpec(id, label, purpose, width, height, aspectRatio) {
+  return { id, label, purpose, format: "png", width, height, aspectRatio };
+}
+
+function validateBriefFields(value) {
+  if (!Array.isArray(value) || value.length > 16) invalid("must contain at most 16 items", "SkillDescriptor.briefFields");
+  const supportedTypes = new Set(["text", "textarea", "select"]);
+  value.forEach((field, index) => {
+    const path = `SkillDescriptor.briefFields[${index}]`;
+    assertStrictObject(field, path, ["id", "label", "type", "required", "options"]);
+    assertIdentifier(field.id, `${path}.id`);
+    assertNonEmptyString(field.label, `${path}.label`, 300);
+    if (!supportedTypes.has(field.type)) invalid("must be text, textarea, or select", `${path}.type`);
+    if (typeof field.required !== "boolean") invalid("must be a boolean", `${path}.required`);
+    assertStringArray(field.options, `${path}.options`, { max: 30, itemMax: 300 });
+    if (field.type === "select" && field.options.length === 0) invalid("requires at least one option", `${path}.options`);
+  });
+  assertUniqueValues(value.map((field) => field.id), "SkillDescriptor.briefFields", "field ids");
+}
+
+function validateOutputSpecs(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 16) {
+    invalid("must contain one to sixteen items", "SkillDescriptor.outputSpecs");
+  }
+  value.forEach((output, index) => {
+    const path = `SkillDescriptor.outputSpecs[${index}]`;
+    assertStrictObject(output, path, ["id", "label", "purpose", "format", "width", "height", "aspectRatio"]);
+    assertIdentifier(output.id, `${path}.id`);
+    assertNonEmptyString(output.label, `${path}.label`, 300);
+    assertNonEmptyString(output.purpose, `${path}.purpose`, 4000);
+    if (!outputFormats.has(output.format)) invalid("must be png, jpeg, or webp", `${path}.format`);
+    assertNullableDimension(output.width, `${path}.width`);
+    assertNullableDimension(output.height, `${path}.height`);
+    assertNullableString(output.aspectRatio, `${path}.aspectRatio`, 80);
+  });
+  assertUniqueValues(value.map((output) => output.id), "SkillDescriptor.outputSpecs", "output ids");
 }
 
 function validateCountRange(value, path, { max }) {
@@ -337,6 +446,15 @@ function validateClarificationAnswers(value) {
   for (const [id, answer] of Object.entries(value)) {
     assertIdentifier(id, `AgentRun.clarificationAnswers.${id}`);
     assertNonEmptyString(answer, `AgentRun.clarificationAnswers.${id}`, 4000);
+  }
+}
+
+function validateSkillInputs(value) {
+  if (!isPlainObject(value)) invalid("must be an object", "AgentRun.skillInputs");
+  if (Object.keys(value).length > 16) invalid("must contain at most 16 fields", "AgentRun.skillInputs");
+  for (const [id, input] of Object.entries(value)) {
+    assertIdentifier(id, `AgentRun.skillInputs.${id}`);
+    assertString(input, `AgentRun.skillInputs.${id}`, 4000);
   }
 }
 
@@ -372,7 +490,7 @@ function validateAgentRunState(run) {
     if (run.plannedOutputs.length === 0) invalid(`requires at least one item when status is ${run.status}`, "AgentRun.plannedOutputs");
   }
   if (run.status === "failed" && run.error === null) invalid("is required when status is failed", "AgentRun.error");
-  if (run.recommendedSkillId !== null && run.plannedOutputs.length > 0) {
+  if (run.recommendedSkillId !== null && run.plannedOutputs.length > 0 && (run.selectedSkillId === null || run.selectedSkillId === run.recommendedSkillId)) {
     validateSkillCompatibility(run.recommendedSkillId, {
       sourceImageCount: run.sourceObjectIds.length,
       plannedOutputCount: run.plannedOutputs.length
@@ -383,9 +501,24 @@ function validateAgentRunState(run) {
       sourceImageCount: run.sourceObjectIds.length,
       plannedOutputCount: run.plannedOutputs.length
     }, "AgentRun.selectedSkillId");
+    validateBusinessOutputRecipe(run.selectedSkillId, run.plannedOutputs, "AgentRun.plannedOutputs");
   }
 }
 
+function validateBusinessOutputRecipe(skillId, plannedOutputs, path) {
+  if (!["xiaohongshu-cover", "product-marketing-set"].includes(skillId)) return;
+  const descriptor = SKILL_DESCRIPTORS.find((candidate) => candidate.id === skillId);
+  for (let index = 0; index < descriptor.outputSpecs.length; index += 1) {
+    const expected = descriptor.outputSpecs[index];
+    const output = plannedOutputs[index];
+    if (!output) invalid("must match the fixed output recipe", path);
+    for (const key of ["id", "label", "purpose", "format", "width", "height", "aspectRatio"]) {
+      if (output[key] !== expected[key]) {
+        invalid("must match the fixed output recipe", `${path}[${index}].${key}`);
+      }
+    }
+  }
+}
 function assertStrictObject(value, path, fields) {
   if (!isPlainObject(value)) invalid("must be an object", path);
   const allowed = new Set(fields);

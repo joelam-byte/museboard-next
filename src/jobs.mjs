@@ -21,6 +21,7 @@ const execFileAsync = promisify(execFile);
 const jobs = new Map();
 const textRecognitionJobs = new Map();
 const supportedActions = new Set(["remove-bg", "quick-edit", "expand", "edit-elements"]);
+const businessImageActions = new Set(["xiaohongshu-cover", "product-marketing-set"]);
 const ignoredGeneratedImagePaths = new Map();
 const globalIgnoredGeneratedImageScope = "__global__";
 const outputPollMs = 1000;
@@ -167,6 +168,108 @@ export async function createImageJob(projectDir, input, options = {}) {
   return publicJob(job);
 }
 
+export async function createBusinessImageJob(projectDir, input, options = {}) {
+  const canvasId = normalizeCanvasId(options.canvasId);
+  const storeOptions = { canvasId };
+  const action = String(input?.action || "");
+  if (!businessImageActions.has(action)) {
+    const error = new Error(`Unsupported business image action: ${action || "(missing)"}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  const sourceObjectIds = normalizeBusinessSourceObjectIds(input?.sourceObjectIds);
+  const output = normalizeBusinessOutput(input?.output);
+  const id = normalizeBusinessJobId(input?.id);
+  const prompt = normalizeBusinessPrompt(input?.prompt);
+  const agentRunId = normalizeBusinessJobId(input?.agentRunId, "AgentRun id");
+
+  const objects = await Promise.all(sourceObjectIds.map((objectId) => requireImageObject(projectDir, objectId, storeOptions)));
+  const imagePaths = objects.map((object) => object.assetPath || object.sourcePath);
+  if (imagePaths.some((imagePath) => !imagePath)) {
+    const error = new Error("Every business Skill source image must be a local canvas asset.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const source = objects[0];
+  const jobDir = path.join(jobsDirFor(projectDir, canvasId), id);
+  const outputDir = path.join(jobDir, "outputs");
+  const logPath = path.join(jobDir, "codex.log");
+  const startedAtMs = Date.now();
+  const job = {
+    id,
+    action,
+    outputId: output.id,
+    output,
+    projectDir,
+    canvasId,
+    status: "queued",
+    objectId: source.id,
+    sourceObjectId: source.id,
+    sourceObjectIds,
+    sourceImagePath: imagePaths[0],
+    imagePath: imagePaths,
+    expandOptions: null,
+    expandInputPath: null,
+    transparentLayerMode: false,
+    quickEditAnnotations: null,
+    annotationSessionId: null,
+    annotatedImagePath: null,
+    annotationManifestPath: null,
+    prompt,
+    outputDir,
+    logPath,
+    textInventoryPath: null,
+    createdAt: new Date(startedAtMs).toISOString(),
+    startedAt: null,
+    completedAt: null,
+    durationMs: null,
+    outputDetectedAt: null,
+    detectedOutputPath: null,
+    codexSessionId: null,
+    imported: [],
+    placeholder: null,
+    placeholderId: null,
+    backgroundCompletionRunning: false,
+    backgroundCompletionPromise: null,
+    error: null,
+    agentRunId,
+    agentRunCanvasId: agentRunCanvasIdForJob(canvasId)
+  };
+  const operationLease = await createOperationLease("image-job", { action, projectDir, canvasId });
+  let placeholder;
+  try {
+    const dimensions = businessPlaceholderDimensions(source, output);
+    placeholder = await addJobPlaceholder(projectDir, {
+      id: `${id}_placeholder`,
+      action,
+      status: "running",
+      name: `${actionLabel(action)} · ${output.label}`,
+      sourceObjectId: source.id,
+      sourceObjectIds,
+      agentRunId: job.agentRunId,
+      jobId: job.id,
+      width: dimensions.width,
+      height: dimensions.height
+    }, storeOptions);
+  } catch (error) {
+    await recordAgentRunFailureBestEffort(projectDir, job, error);
+    await operationLease.release();
+    throw error;
+  }
+  job.placeholder = placeholder;
+  job.placeholderId = placeholder.id;
+  jobs.set(id, job);
+
+  runJob(projectDir, job, startedAtMs)
+    .catch((error) => markFailed(projectDir, job, error).catch(() => {}))
+    .finally(async () => {
+      await job.backgroundCompletionPromise?.catch(() => {});
+      await operationLease.release();
+    });
+
+  return publicJob(job);
+}
 export async function createTextRecognitionJob(projectDir, input, options = {}) {
   const canvasId = normalizeCanvasId(options.canvasId);
   const storeOptions = { canvasId };
@@ -321,7 +424,7 @@ export async function submitTextRecognitionEdit(projectDir, id, input = {}, opti
   try {
     job.placeholder = await updateObject(projectDir, job.placeholderId, {
       agentRunId: job.agentRunId,
-      sourceObjectIds: [job.sourceObjectId],
+      sourceObjectIds: sourceObjectIdsForJob(job),
       jobId: job.id
     }, storeOptions);
   } catch {
@@ -1159,7 +1262,7 @@ async function collectAndPlaceResult(projectDir, job, startedAtMs, { final, dete
     prompt: jobPrompt(job),
     imagegenPrompt: job.imagegenPrompt || "",
     sourceObjectId: job.sourceObjectId,
-    sourceObjectIds: [job.sourceObjectId],
+    sourceObjectIds: sourceObjectIdsForJob(job),
     agentRunId: job.agentRunId || null,
     jobId: job.id,
     annotationSessionId: job.annotationSessionId || null,
@@ -1175,7 +1278,7 @@ async function collectAndPlaceResult(projectDir, job, startedAtMs, { final, dete
       prompt: jobPrompt(job),
       imagegenPrompt: job.imagegenPrompt || "",
       sourceObjectId: job.sourceObjectId,
-      sourceObjectIds: [job.sourceObjectId],
+      sourceObjectIds: sourceObjectIdsForJob(job),
       agentRunId: job.agentRunId || null,
       jobId: job.id,
       canvasId: job.canvasId
@@ -1662,10 +1765,12 @@ function publicJob(job) {
   return {
     id: job.id,
     action: job.action,
+    outputId: job.outputId || null,
     status: job.status,
     agentRunId: job.agentRunId || null,
     objectId: job.objectId,
     sourceObjectId: job.sourceObjectId,
+    sourceObjectIds: sourceObjectIdsForJob(job),
     annotationSessionId: job.annotationSessionId || null,
     createdAt: job.createdAt,
     startedAt: job.startedAt,
@@ -1714,6 +1819,94 @@ function publicTextRecognitionJob(job) {
   };
 }
 
+function normalizeBusinessSourceObjectIds(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 3) {
+    const error = new Error("Business image jobs require one to three source image ids.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const ids = value.map((id) => normalizeBusinessJobId(id, "Source image id"));
+  if (new Set(ids).size !== ids.length) {
+    const error = new Error("Business image jobs require unique source image ids.");
+    error.statusCode = 400;
+    throw error;
+  }
+  return ids;
+}
+
+function normalizeBusinessOutput(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    const error = new Error("Business image jobs require a fixed output recipe.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const id = normalizeBusinessJobId(value.id, "Output id");
+  const label = normalizeBusinessText(value.label, "Output label", 300);
+  const purpose = normalizeBusinessText(value.purpose, "Output purpose", 4000);
+  const format = normalizeBusinessText(value.format, "Output format", 20);
+  if (!["png", "jpeg", "webp"].includes(format)) {
+    const error = new Error("Business output format must be png, jpeg, or webp.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const width = Number(value.width);
+  const height = Number(value.height);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > 16_384 || height > 16_384) {
+    const error = new Error("Business output dimensions must be positive image dimensions.");
+    error.statusCode = 400;
+    throw error;
+  }
+  return {
+    id,
+    label,
+    purpose,
+    format,
+    width,
+    height,
+    aspectRatio: normalizeBusinessText(value.aspectRatio, "Output aspect ratio", 80)
+  };
+}
+
+function normalizeBusinessPrompt(value) {
+  return normalizeBusinessText(value, "Business image prompt", 60_000);
+}
+
+function normalizeBusinessJobId(value, label = "Business job id") {
+  if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,299}$/.test(value.trim())) {
+    const error = new Error(`${label} must be a path-safe id.`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return value.trim();
+}
+
+function normalizeBusinessText(value, label, maximumLength) {
+  if (typeof value !== "string" || !value.trim() || value.trim().length > maximumLength) {
+    const error = new Error(`${label} must be non-empty text up to ${maximumLength} characters.`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return value.trim();
+}
+
+function businessPlaceholderDimensions(source, output) {
+  const sourceWidth = Math.max(1, Math.round(Number(source?.width) || Number(source?.naturalWidth) || 1));
+  const sourceHeight = Math.max(1, Math.round(Number(source?.height) || Number(source?.naturalHeight) || 1));
+  const aspectRatio = output.width / output.height;
+  const sourceArea = sourceWidth * sourceHeight;
+  const height = Math.max(1, Math.round(Math.sqrt(sourceArea / aspectRatio)));
+  return {
+    width: Math.max(1, Math.round(height * aspectRatio)),
+    height
+  };
+}
+
+function sourceObjectIdsForJob(job) {
+  const values = Array.isArray(job?.sourceObjectIds) && job.sourceObjectIds.length > 0
+    ? job.sourceObjectIds
+    : [job?.sourceObjectId];
+  return Array.from(new Set(values.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim())));
+}
 async function requireImageObject(projectDir, objectId, options = {}) {
   const state = await readState(projectDir, options);
   const object = state.objects.find((item) => item.id === objectId);
@@ -1774,6 +1967,8 @@ function actionLabel(action) {
   if (action === "edit-text") return "Edit Text";
   if (action === "edit-elements") return "Edit Elements";
   if (action === "remove-bg") return "Remove BG";
+  if (action === "xiaohongshu-cover") return "Xiaohongshu Cover";
+  if (action === "product-marketing-set") return "Product Marketing";
   return "Image job";
 }
 
@@ -1806,7 +2001,7 @@ async function placeImportedAtPlaceholder(projectDir, job) {
     height: job.placeholder.height,
     layoutMode: "canvas-row",
     sourceObjectId: job.sourceObjectId,
-    sourceObjectIds: [job.sourceObjectId],
+    sourceObjectIds: sourceObjectIdsForJob(job),
     agentRunId: job.agentRunId || null,
     jobId: job.id,
     ...(job.annotationSessionId ? { annotationSessionId: job.annotationSessionId } : {})
@@ -1843,7 +2038,7 @@ async function placeImportedElementLayers(projectDir, job) {
     const patch = {
       layoutMode: "canvas-stack",
       sourceObjectId: job.sourceObjectId,
-      sourceObjectIds: [job.sourceObjectId],
+      sourceObjectIds: sourceObjectIdsForJob(job),
       agentRunId: job.agentRunId || null,
       jobId: job.id,
       layerGroupId: groupId,

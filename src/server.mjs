@@ -5,11 +5,12 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { collectRecentImages, defaultGeneratedImagesRoot, generatedImagesDirForThread } from "./collector.mjs";
 import { hasActiveChatOperations, sendImageToBoundChat, sendMentionToBoundChat, stopActiveChatOperations } from "./codex-chat.mjs";
-import { createImageJob, createTextRecognitionJob, getActivePlaceholderIds, getIgnoredGeneratedImagePaths, getImageJob, getTextRecognitionJob, hasActiveCanvasJobs, hasRunningImageJobs, submitTextRecognitionEdit } from "./jobs.mjs";
+import { createBusinessImageJob, createImageJob, createTextRecognitionJob, getActivePlaceholderIds, getIgnoredGeneratedImagePaths, getImageJob, getTextRecognitionJob, hasActiveCanvasJobs, hasRunningImageJobs, submitTextRecognitionEdit } from "./jobs.mjs";
 import { analyzeAgentRun, answerAgentRunClarifications, selectAgentRunSkill } from "./agent-brief-service.mjs";
 import { createCodexAgentAnalyzer } from "./agent-analyzer.mjs";
-import { AgentRunExecutionError } from "./agent-run-execution.mjs";
+import { AgentRunExecutionError, recordAgentRunJobFailure, retryAgentRunJobs, startAgentRunBatch } from "./agent-run-execution.mjs";
 import { SKILL_DESCRIPTORS } from "./agent-run-contracts.mjs";
+import { buildBusinessSkillJobPlan, normalizeBusinessSkillInputs } from "./business-skill-recipes.mjs";
 import { readAgentRun } from "./agent-run-store.mjs";
 import { assetsDirFor, projectRegistryPath, publicDir, runtimePathFor } from "./paths.mjs";
 import { exportLayerGroupPsd } from "./psd-export.mjs";
@@ -34,14 +35,14 @@ const contentTypes = {
 const defaultMaxJsonBodyBytes = 32 * 1024 * 1024;
 const maxQueryLimit = 100;
 
-export async function createServer({ projectDir, host = "127.0.0.1", port = 43217, autoCollect = true, chatThreadId = null, autoCollectIntervalMs = 5000, autoCollectWatchDebounceMs = 250, maxJsonBodyBytes = defaultMaxJsonBodyBytes, persistentRegistryPath = projectRegistryPath(), generatedImagesRoot = defaultGeneratedImagesRoot(), hasActiveJobs = hasActiveCanvasJobs, agentAnalyzer = null, imageJobFactory = createImageJob } = {}) {
+export async function createServer({ projectDir, host = "127.0.0.1", port = 43217, autoCollect = true, chatThreadId = null, autoCollectIntervalMs = 5000, autoCollectWatchDebounceMs = 250, maxJsonBodyBytes = defaultMaxJsonBodyBytes, persistentRegistryPath = projectRegistryPath(), generatedImagesRoot = defaultGeneratedImagesRoot(), hasActiveJobs = hasActiveCanvasJobs, agentAnalyzer = null, imageJobFactory = createImageJob, businessImageJobFactory = createBusinessImageJob } = {}) {
   const registry = createProjectRegistry({ host, port, autoCollect, autoCollectIntervalMs, autoCollectWatchDebounceMs, maxJsonBodyBytes, persistentRegistryPath, generatedImagesRoot, hasActiveJobs });
   const initialProject = await registerProject(registry, projectDir, { autoCollect, chatThreadId });
   await restorePersistedProjects(registry);
 
   const server = http.createServer(async (request, response) => {
     try {
-      await handleRequest(request, response, { registry, server, agentAnalyzer, imageJobFactory });
+      await handleRequest(request, response, { registry, server, agentAnalyzer, imageJobFactory, businessImageJobFactory });
     } catch (error) {
       const status = error.statusCode || 500;
       sendJson(response, status, {
@@ -193,7 +194,18 @@ async function handleRequest(request, response, context) {
     assertExpectedCanvasScope(project, body);
     const result = await runMaintenanceSensitiveOperation(
       context.registry,
-      () => confirmAgentRun(projectDir, project, agentRunConfirmMatch[1], context.imageJobFactory)
+      () => confirmAgentRun(projectDir, project, agentRunConfirmMatch[1], context.imageJobFactory, context.businessImageJobFactory, body.skillInputs)
+    );
+    return sendJson(response, 202, result);
+  }
+
+  const agentRunRetryMatch = /^\/api\/agent-runs\/([^/]+)\/retry$/.exec(pathname);
+  if (request.method === "POST" && agentRunRetryMatch) {
+    const body = await readJson(request, context.registry);
+    assertExpectedCanvasScope(project, body);
+    const result = await runMaintenanceSensitiveOperation(
+      context.registry,
+      () => retryBusinessAgentRun(projectDir, project, agentRunRetryMatch[1], context.businessImageJobFactory)
     );
     return sendJson(response, 202, result);
   }
@@ -1041,11 +1053,15 @@ function agentAnalyzerFor(context, projectDir) {
 }
 
 const confirmableImageSkillIds = new Set(["quick-edit", "expand", "remove-bg", "edit-elements"]);
+const businessImageSkillIds = new Set(["xiaohongshu-cover", "product-marketing-set"]);
 
-async function confirmAgentRun(projectDir, project, agentRunId, imageJobFactory) {
+async function confirmAgentRun(projectDir, project, agentRunId, imageJobFactory, businessImageJobFactory, skillInputs) {
   const canvasId = agentRunCanvasIdFor(project);
   const current = await readAgentRun(projectDir, { canvasId, agentRunId });
   if (current.status === "running") {
+    if (isBusinessImageSkill(current.selectedSkillId)) {
+      return { agentRun: current, imageJobs: currentAgentRunJobs(current, project) };
+    }
     return {
       agentRun: current,
       imageJob: currentAgentRunJob(current, project)
@@ -1055,6 +1071,9 @@ async function confirmAgentRun(projectDir, project, agentRunId, imageJobFactory)
     const error = new Error(`AgentRun cannot be confirmed while status is ${current.status}.`);
     error.statusCode = 409;
     throw error;
+  }
+  if (isBusinessImageSkill(current.selectedSkillId)) {
+    return startBusinessAgentRun(projectDir, project, current, businessImageJobFactory, skillInputs);
   }
   if (current.selectedSkillId === "edit-text") {
     const error = new Error("Edit Text confirmation requires its existing OCR workflow. Start Edit Text from the canvas toolbar.");
@@ -1095,6 +1114,123 @@ async function confirmAgentRun(projectDir, project, agentRunId, imageJobFactory)
   }
 }
 
+function isBusinessImageSkill(skillId) {
+  return businessImageSkillIds.has(skillId);
+}
+
+async function startBusinessAgentRun(projectDir, project, current, businessImageJobFactory, skillInputs) {
+  const normalizedSkillInputs = normalizeBusinessSkillInputs(current.selectedSkillId, skillInputs);
+  const plan = buildBusinessSkillJobPlan({
+    skillId: current.selectedSkillId,
+    sourceObjectIds: current.sourceObjectIds,
+    optimizedPrompt: current.optimizedPrompt,
+    skillInputs: normalizedSkillInputs,
+    plannedOutputs: current.plannedOutputs,
+    jobIds: current.plannedOutputs.map(() => nextBusinessJobId())
+  });
+  const agentRun = await startAgentRunBatch(projectDir, {
+    canvasId: current.canvasId,
+    agentRunId: current.id,
+    action: current.selectedSkillId,
+    sourceObjectIds: current.sourceObjectIds,
+    skillInputs: normalizedSkillInputs,
+    jobs: plan.map((job) => ({ id: job.id, outputId: job.outputId }))
+  });
+  const imageJobs = await startBusinessImageJobs(projectDir, project, agentRun, plan, businessImageJobFactory);
+  return { agentRun, imageJobs };
+}
+
+async function retryBusinessAgentRun(projectDir, project, agentRunId, businessImageJobFactory) {
+  const canvasId = agentRunCanvasIdFor(project);
+  const current = await readAgentRun(projectDir, { canvasId, agentRunId });
+  if (!isBusinessImageSkill(current.selectedSkillId)) {
+    const error = new Error("Only business image Skills support failed-output retry.");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!["partial", "failed"].includes(current.status)) {
+    const error = new Error(`AgentRun cannot retry while status is ${current.status}.`);
+    error.statusCode = 409;
+    throw error;
+  }
+  const failedOutputIds = current.plannedOutputs
+    .filter((output) => output.status === "failed")
+    .map((output) => output.id);
+  if (failedOutputIds.length === 0) {
+    const error = new Error("AgentRun has no failed outputs to retry.");
+    error.statusCode = 409;
+    throw error;
+  }
+  const normalizedSkillInputs = normalizeBusinessSkillInputs(current.selectedSkillId, current.skillInputs);
+  const plan = buildBusinessSkillJobPlan({
+    skillId: current.selectedSkillId,
+    sourceObjectIds: current.sourceObjectIds,
+    optimizedPrompt: current.optimizedPrompt,
+    skillInputs: normalizedSkillInputs,
+    plannedOutputs: current.plannedOutputs,
+    outputIds: failedOutputIds,
+    jobIds: failedOutputIds.map(() => nextBusinessJobId())
+  });
+  const agentRun = await retryAgentRunJobs(projectDir, {
+    canvasId,
+    agentRunId,
+    jobs: plan.map((job) => ({ id: job.id, outputId: job.outputId }))
+  });
+  const imageJobs = await startBusinessImageJobs(projectDir, project, agentRun, plan, businessImageJobFactory);
+  return { agentRun, imageJobs };
+}
+
+async function startBusinessImageJobs(projectDir, project, agentRun, plan, businessImageJobFactory) {
+  return Promise.all(plan.map(async (job) => {
+    try {
+      return await businessImageJobFactory(projectDir, {
+        id: job.id,
+        action: job.action,
+        outputId: job.outputId,
+        sourceObjectIds: job.sourceObjectIds,
+        prompt: job.prompt,
+        output: job.output,
+        agentRunId: agentRun.id
+      }, storeOptionsFor(project));
+    } catch (error) {
+      await recordAgentRunJobFailure(projectDir, {
+        canvasId: agentRun.canvasId,
+        agentRunId: agentRun.id,
+        jobId: job.id,
+        error
+      }).catch(() => {});
+      return {
+        id: job.id,
+        action: job.action,
+        outputId: job.outputId,
+        status: "failed",
+        agentRunId: agentRun.id,
+        error: error.message || String(error)
+      };
+    }
+  }));
+}
+
+function nextBusinessJobId() {
+  return `job_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+}
+
+function currentAgentRunJobs(agentRun, project) {
+  return agentRun.childJobIds.map((jobId) => {
+    try {
+      return getImageJob(jobId, jobScopeFor(project));
+    } catch {
+      const output = agentRun.plannedOutputs.find((candidate) => candidate.jobId === jobId);
+      return {
+        id: jobId,
+        action: agentRun.selectedSkillId,
+        outputId: output?.id || null,
+        status: output?.status || agentRun.status,
+        agentRunId: agentRun.id
+      };
+    }
+  });
+}
 function currentAgentRunJob(agentRun, project) {
   const jobId = agentRun.childJobIds[0] || null;
   if (!jobId) return null;

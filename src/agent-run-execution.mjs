@@ -3,6 +3,7 @@ import {
   createAgentRun,
   transitionAgentRun
 } from "./agent-run-contracts.mjs";
+import { normalizeBusinessSkillInputs } from "./business-skill-recipes.mjs";
 import { createAgentRunIfAbsent, updateAgentRun } from "./agent-run-store.mjs";
 
 const existingImageActions = new Set(["quick-edit", "expand", "remove-bg", "edit-text", "edit-elements"]);
@@ -67,19 +68,14 @@ export async function recordAgentRunJobSuccess(
 ) {
   return updateAgentRun(projectDir, { canvasId, agentRunId }, (current) => {
     if (current.status !== "running") return current;
-    const outputIds = uniqueIdentifiers(outputObjectIds);
     const plannedOutputs = updatePlannedOutput(current, jobId, (output) => ({
       ...output,
       status: "succeeded",
       jobId,
-      outputObjectIds: outputIds,
+      outputObjectIds: uniqueIdentifiers(outputObjectIds),
       error: null
     }));
-    return transitionAgentRun(current, "succeeded", {
-      plannedOutputs,
-      outputObjectIds: uniqueIdentifiers([...current.outputObjectIds, ...outputIds]),
-      error: null
-    }, { now });
+    return settleAgentRun(current, plannedOutputs, { now });
   });
 }
 
@@ -97,9 +93,94 @@ export async function recordAgentRunJobFailure(
       jobId,
       error: failure
     }));
-    return transitionAgentRun(current, "failed", {
-      plannedOutputs,
-      error: failure
+    return settleAgentRun(current, plannedOutputs, { now });
+  });
+}
+
+export async function startAgentRunBatch(
+  projectDir,
+  { canvasId, agentRunId, action, sourceObjectIds, jobs, skillInputs },
+  { now = new Date().toISOString() } = {}
+) {
+  assertBusinessBatch(action, sourceObjectIds, jobs);
+  const normalizedSkillInputs = normalizeBusinessSkillInputs(action, skillInputs);
+  return updateAgentRun(projectDir, { canvasId, agentRunId }, (current) => {
+    if (current.status === "running" && sameJobIds(current.childJobIds, jobs)) return current;
+    if (current.status !== "ready") {
+      throw new AgentRunExecutionError(`AgentRun cannot start a business batch while status is ${current.status}.`, {
+        code: "agent-run-batch-state"
+      });
+    }
+    if (current.selectedSkillId !== action || !SKILL_IDS.includes(action)) {
+      throw new AgentRunExecutionError(`AgentRun Skill ${JSON.stringify(current.selectedSkillId)} does not match business batch action ${JSON.stringify(action)}.`, {
+        code: "agent-run-batch-skill-mismatch",
+        statusCode: 400
+      });
+    }
+    if (!sameIdentifiers(current.sourceObjectIds, sourceObjectIds)) {
+      throw new AgentRunExecutionError("Business batch sources do not match the AgentRun reference images.", {
+        code: "agent-run-batch-source-mismatch",
+        statusCode: 400
+      });
+    }
+    if (!sameIdentifiers(current.plannedOutputs.map((output) => output.id), jobs.map((job) => job.outputId))) {
+      throw new AgentRunExecutionError("Business batch jobs must cover every planned output exactly once.", {
+        code: "agent-run-batch-output-mismatch",
+        statusCode: 400
+      });
+    }
+    return transitionAgentRun(current, "running", {
+      childJobIds: jobs.map((job) => job.id),
+      plannedOutputs: current.plannedOutputs.map((output) => {
+        const job = jobs.find((candidate) => candidate.outputId === output.id);
+        return {
+          ...output,
+          status: "running",
+          jobId: job.id,
+          outputObjectIds: [],
+          error: null
+        };
+      }),
+      skillInputs: normalizedSkillInputs,
+      error: null
+    }, { now });
+  });
+}
+
+export async function retryAgentRunJobs(
+  projectDir,
+  { canvasId, agentRunId, jobs },
+  { now = new Date().toISOString() } = {}
+) {
+  assertRetryJobs(jobs);
+  return updateAgentRun(projectDir, { canvasId, agentRunId }, (current) => {
+    if (!new Set(["partial", "failed"]).has(current.status)) {
+      throw new AgentRunExecutionError(`AgentRun cannot retry failed outputs while status is ${current.status}.`, {
+        code: "agent-run-retry-state"
+      });
+    }
+    for (const job of jobs) {
+      const output = current.plannedOutputs.find((candidate) => candidate.id === job.outputId);
+      if (!output || output.status !== "failed") {
+        throw new AgentRunExecutionError(`AgentRun output ${JSON.stringify(job.outputId)} is not a failed retry target.`, {
+          code: "agent-run-retry-output-invalid",
+          statusCode: 400
+        });
+      }
+    }
+    return transitionAgentRun(current, "running", {
+      childJobIds: uniqueIdentifiers([...current.childJobIds, ...jobs.map((job) => job.id)]),
+      plannedOutputs: current.plannedOutputs.map((output) => {
+        const job = jobs.find((candidate) => candidate.outputId === output.id);
+        return job ? {
+          ...output,
+          status: "running",
+          jobId: job.id,
+          outputObjectIds: [],
+          error: null
+        } : output;
+      }),
+      error: null
     }, { now });
   });
 }
@@ -190,6 +271,101 @@ function updatePlannedOutput(run, jobId, updater) {
     });
   }
   return plannedOutputs;
+}
+
+function settleAgentRun(run, plannedOutputs, { now }) {
+  const outputObjectIds = uniqueIdentifiers(plannedOutputs.flatMap((output) => output.outputObjectIds));
+  if (plannedOutputs.every((output) => output.status === "succeeded")) {
+    return transitionAgentRun(run, "succeeded", {
+      plannedOutputs,
+      outputObjectIds,
+      error: null
+    }, { now });
+  }
+  if (plannedOutputs.some((output) => output.status === "running" || output.status === "queued" || output.status === "planned")) {
+    return updateRunningAgentRun(run, { plannedOutputs, outputObjectIds, error: null }, now);
+  }
+  const failures = plannedOutputs.filter((output) => output.status === "failed");
+  if (failures.length > 0 && failures.length < plannedOutputs.length) {
+    return transitionAgentRun(run, "partial", {
+      plannedOutputs,
+      outputObjectIds,
+      error: null
+    }, { now });
+  }
+  if (failures.length === plannedOutputs.length) {
+    return transitionAgentRun(run, "failed", {
+      plannedOutputs,
+      outputObjectIds,
+      error: failures[0].error || failureFor(new Error("Every planned output failed."))
+    }, { now });
+  }
+  return updateRunningAgentRun(run, { plannedOutputs, outputObjectIds, error: null }, now);
+}
+
+function updateRunningAgentRun(run, patch, now) {
+  return {
+    ...run,
+    ...patch,
+    timestamps: {
+      ...run.timestamps,
+      updatedAt: now
+    }
+  };
+}
+
+function assertBusinessBatch(action, sourceObjectIds, jobs) {
+  if (!new Set(["xiaohongshu-cover", "product-marketing-set"]).has(action)) {
+    throw new AgentRunExecutionError(`Unsupported business batch action: ${action || "(missing)"}.`, {
+      code: "agent-run-batch-action-invalid",
+      statusCode: 400
+    });
+  }
+  if (!Array.isArray(sourceObjectIds) || sourceObjectIds.length < 1 || sourceObjectIds.length > 3 || uniqueIdentifiers(sourceObjectIds).length !== sourceObjectIds.length) {
+    throw new AgentRunExecutionError("Business batches require one to three unique source object ids.", {
+      code: "agent-run-batch-sources-invalid",
+      statusCode: 400
+    });
+  }
+  assertRetryJobs(jobs);
+}
+
+function assertRetryJobs(jobs) {
+  if (!Array.isArray(jobs) || jobs.length < 1 || jobs.length > 16) {
+    throw new AgentRunExecutionError("AgentRun jobs require one to sixteen output assignments.", {
+      code: "agent-run-jobs-invalid",
+      statusCode: 400
+    });
+  }
+  const ids = [];
+  const outputIds = [];
+  for (const job of jobs) {
+    if (!job || typeof job.id !== "string" || !job.id.trim() || typeof job.outputId !== "string" || !job.outputId.trim()) {
+      throw new AgentRunExecutionError("AgentRun jobs require path-safe job and output ids.", {
+        code: "agent-run-job-identifiers-invalid",
+        statusCode: 400
+      });
+    }
+    ids.push(job.id.trim());
+    outputIds.push(job.outputId.trim());
+  }
+  if (uniqueIdentifiers(ids).length !== ids.length || uniqueIdentifiers(outputIds).length !== outputIds.length) {
+    throw new AgentRunExecutionError("AgentRun jobs must not duplicate job or output ids.", {
+      code: "agent-run-jobs-duplicate",
+      statusCode: 400
+    });
+  }
+}
+
+function sameIdentifiers(left, right) {
+  return Array.isArray(left)
+    && Array.isArray(right)
+    && left.length === right.length
+    && left.every((value, index) => value === right[index]);
+}
+
+function sameJobIds(currentJobIds, jobs) {
+  return sameIdentifiers(currentJobIds, jobs.map((job) => job.id));
 }
 
 function assertExistingImageAction(action) {

@@ -1265,6 +1265,7 @@ async function collectAndPlaceResult(projectDir, job, startedAtMs, { final, dete
     sourceObjectIds: sourceObjectIdsForJob(job),
     agentRunId: job.agentRunId || null,
     jobId: job.id,
+    assetKind: assetKindForJob(job),
     annotationSessionId: job.annotationSessionId || null,
     canvasId: job.canvasId
   });
@@ -1281,6 +1282,7 @@ async function collectAndPlaceResult(projectDir, job, startedAtMs, { final, dete
       sourceObjectIds: sourceObjectIdsForJob(job),
       agentRunId: job.agentRunId || null,
       jobId: job.id,
+      assetKind: assetKindForJob(job),
       canvasId: job.canvasId
     });
   }
@@ -1961,6 +1963,9 @@ function buildEditTextPrompt(changes) {
   ].join("\n");
 }
 
+function assetKindForJob(job) {
+  return businessImageActions.has(job?.action) ? "generation" : "edit";
+}
 function actionLabel(action) {
   if (action === "quick-edit") return "Quick Edit";
   if (action === "expand") return "Expand";

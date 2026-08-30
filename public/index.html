@@ -346,6 +346,8 @@
         <div class="agent-workbench-tabs" role="tablist" aria-label="Agent workbench tabs">
           <button type="button" data-agent-tab="agent" role="tab" aria-selected="true" aria-controls="agentPanel" data-i18n="agentTab">Agent</button>
           <button type="button" data-agent-tab="skill" role="tab" aria-selected="false" aria-controls="skillPanel" data-i18n="skillTab">Skill</button>
+          <button type="button" data-agent-tab="history" role="tab" aria-selected="false" aria-controls="historyPanel" data-i18n="historyTab">History</button>
+          <button type="button" data-agent-tab="assets" role="tab" aria-selected="false" aria-controls="assetsPanel" data-i18n="assetsTab">Assets</button>
         </div>
         <section id="agentPanel" class="agent-workbench-panel" role="tabpanel">
           <div class="agent-workbench-heading">
@@ -370,6 +372,20 @@
             <p data-i18n="skillHint">Choose a direction before analysis, or replace the recommendation before generation.</p>
           </div>
           <div id="agentSkillList" class="agent-skill-list" aria-live="polite"></div>
+        </section>
+        <section id="historyPanel" class="agent-workbench-panel" role="tabpanel" hidden>
+          <div class="agent-workbench-heading">
+            <h2 data-i18n="historyHeading">Run history</h2>
+            <p data-i18n="historyHint">Review the brief, inputs, outputs, and retry status. Reusing a request always returns to explicit confirmation.</p>
+          </div>
+          <div id="agentRunHistory" class="agent-history-list" aria-live="polite"></div>
+        </section>
+        <section id="assetsPanel" class="agent-workbench-panel" role="tabpanel" hidden>
+          <div class="agent-workbench-heading">
+            <h2 data-i18n="assetsHeading">Assets</h2>
+            <p data-i18n="assetsHint">Uploaded, generated, and edited images stay available after you remove them from the canvas.</p>
+          </div>
+          <div id="canvasAssetList" class="canvas-asset-list" aria-live="polite"></div>
         </section>
       </aside>
     </div>

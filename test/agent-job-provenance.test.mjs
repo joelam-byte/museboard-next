@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { collectRecentImages } from "../src/collector.mjs";
 import { addImage, addJobPlaceholder } from "../src/store.mjs";
+import { listCanvasAssets } from "../src/asset-library.mjs";
 
 const pngOne = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 const pngTwo = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFUlEQVR4nGO8Y6D6n4GBgYEJRIAwACHvAjSDKprFAAAAAElFTkSuQmCC";
@@ -42,10 +43,15 @@ test("job placeholders and collected results preserve lightweight AgentRun prove
     agentRunId: "run-job-provenance",
     sourceObjectIds: [source.id],
     jobId: "job-provenance",
+    assetKind: "edit",
     canvasId
   });
   assert.equal(collected.imported.length, 1);
   assert.equal(collected.imported[0].agentRunId, "run-job-provenance");
   assert.equal(collected.imported[0].jobId, "job-provenance");
   assert.deepEqual(collected.imported[0].sourceObjectIds, [source.id]);
+
+  const assets = await listCanvasAssets(projectDir, { canvasId });
+  const collectedAsset = assets.find((asset) => asset.objectIds.includes(collected.imported[0].id));
+  assert.equal(collectedAsset.kind, "edit");
 });

@@ -40,6 +40,10 @@ export function jobsDirFor(projectDir, canvasId = null) {
   return path.join(canvasDataDirFor(projectDir, canvasId), "jobs");
 }
 
+export function assetIndexPathFor(projectDir, canvasId = null) {
+  return path.join(canvasDataDirFor(projectDir, canvasId), "assets.json");
+}
+
 export function agentRunsDirFor(projectDir, canvasId) {
   return path.join(canvasDataDirFor(projectDir, canvasId), "runs");
 }

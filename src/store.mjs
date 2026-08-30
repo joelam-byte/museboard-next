@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { assetsDirFor, dataDirFor, legacyCanvasDataDirFor, statePathFor } from "./paths.mjs";
+import { registerCanvasAsset } from "./asset-library.mjs";
 
 const defaultState = {
   version: 1,
@@ -690,7 +691,7 @@ export async function addImage(projectDir, input, options = {}) {
   }
 
   const asset = await persistImage(projectDir, input, options);
-  return mutateState(projectDir, options, async (state) => {
+  const object = await mutateState(projectDir, options, async (state) => {
     const duplicate = shouldDedupeImage(input) ? await findDuplicateImageObject(state, asset) : null;
     if (duplicate) {
       await removeDuplicateAsset(asset, duplicate);
@@ -736,6 +737,74 @@ export async function addImage(projectDir, input, options = {}) {
       value: object
     };
   });
+  if (object?.assetPath) {
+    await registerCanvasAsset(projectDir, {
+      canvasId: canvasIdFrom(options),
+      assetPath: object.assetPath,
+      object,
+      kind: normalizeAssetKind(input.assetKind)
+    });
+  }
+  return object;
+}
+
+export async function reinsertStoredAsset(projectDir, asset, options = {}) {
+  const canvasId = canvasIdFrom(options);
+  const assetsDir = assetsDirFor(projectDir, canvasId);
+  const assetPath = typeof asset?.assetPath === "string" ? path.resolve(asset.assetPath) : "";
+  if (!assetPath || !isInsidePath(assetsDir, assetPath)) {
+    const error = new Error("Asset must belong to this canvas's local assets directory.");
+    error.statusCode = 400;
+    throw error;
+  }
+  await assertSupportedImageFile(assetPath);
+  const dimensions = await readImageDimensions(assetPath);
+  const name = sanitizeString(asset.name, path.basename(assetPath));
+  const sourceObjectIds = Array.isArray(asset.sourceObjectIds) ? asset.sourceObjectIds : [];
+
+  return mutateState(projectDir, options, (state) => {
+    const count = state.objects.length;
+    const displaySize = imageDisplaySize(dimensions, {});
+    const object = {
+      id: "img_" + Date.now() + "_" + crypto.randomBytes(4).toString("hex"),
+      type: "image",
+      name,
+      src: typeof asset.src === "string" && asset.src ? asset.src : "/assets/" + encodeURIComponent(path.basename(assetPath)),
+      assetPath,
+      sourcePath: null,
+      prompt: "",
+      imagegenPrompt: "",
+      sourceObjectId: sourceObjectIds[0] || null,
+      ...lightweightProvenanceFields({
+        agentRunId: asset.agentRunId,
+        jobId: asset.jobId,
+        parentVersionId: asset.parentVersionId,
+        batchId: asset.batchId,
+        sourceObjectIds
+      }),
+      layoutMode: "asset-library",
+      x: 120 + (count % 5) * 56,
+      y: 120 + (count % 7) * 44,
+      width: displaySize.width,
+      height: displaySize.height,
+      naturalWidth: dimensions.width || null,
+      naturalHeight: dimensions.height || null,
+      hasAlpha: Boolean(dimensions.hasAlpha),
+      createdAt: new Date().toISOString()
+    };
+    return {
+      state: {
+        ...state,
+        objects: [...state.objects, object],
+        selection: object.id
+      },
+      value: object
+    };
+  });
+}
+
+function normalizeAssetKind(value) {
+  return ["upload", "generation", "edit"].includes(value) ? value : "upload";
 }
 
 function shouldDedupeImage(input = {}) {

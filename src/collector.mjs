@@ -64,7 +64,8 @@ export async function collectRecentImages(projectDir, options = {}) {
       sourceObjectId: options.sourceObjectId || null,
       sourceObjectIds: options.sourceObjectIds || [],
       agentRunId: options.agentRunId || null,
-      jobId: options.jobId || null
+      jobId: options.jobId || null,
+      assetKind: options.assetKind || null
     }, storeOptions);
     imported.push(object);
   }

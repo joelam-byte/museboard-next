@@ -38,6 +38,10 @@ const colorPalette = document.querySelector("#colorPalette");
 const agentWorkbench = document.querySelector("#agentWorkbench");
 const agentPanel = document.querySelector("#agentPanel");
 const skillPanel = document.querySelector("#skillPanel");
+const historyPanel = document.querySelector("#historyPanel");
+const assetsPanel = document.querySelector("#assetsPanel");
+const agentRunHistoryList = document.querySelector("#agentRunHistory");
+const canvasAssetList = document.querySelector("#canvasAssetList");
 const agentRequestForm = document.querySelector("#agentRequestForm");
 const agentRequest = document.querySelector("#agentRequest");
 const agentAnalyzeButton = document.querySelector("#agentAnalyzeButton");
@@ -176,6 +180,32 @@ const translations = {
     agentWorkbench: "Museboard Agent workbench",
     agentTab: "Agent",
     skillTab: "Skill",
+    historyTab: "History",
+    assetsTab: "Assets",
+    historyHeading: "Run history",
+    historyHint: "Review the brief, inputs, outputs, and retry status. Reusing a request always returns to explicit confirmation.",
+    historyEmpty: "No Agent runs in this canvas yet.",
+    historyLoadFailed: "Could not load run history.",
+    historyOpen: "View",
+    historyReuse: "Run again",
+    historyCopy: "Copy run",
+    historyCopied: "Run summary copied.",
+    historyPrompt: "Prompt",
+    historySourcesMissing: "The original reference image is no longer on this canvas.",
+    historyDraftRestored: "Request restored. Review and analyze it before confirming generation.",
+    assetsHeading: "Assets",
+    assetsHint: "Uploaded, generated, and edited images stay available after you remove them from the canvas.",
+    assetsEmpty: "No retained image assets yet.",
+    assetsLoadFailed: "Could not load assets.",
+    assetUpload: "Upload",
+    assetGeneration: "Generated",
+    assetEdit: "Edited",
+    assetOnCanvas: "on canvas",
+    assetRemoved: "removed from canvas",
+    assetLocate: "Locate",
+    assetInsert: "Insert",
+    assetInserted: "Asset inserted on the canvas.",
+    assetCopy: "Copy @file",
     agentHeading: "Image direction",
     agentSourceEmpty: "Select one to three images on the canvas.",
     agentSourceSelected: "selected image.",
@@ -381,6 +411,32 @@ const translations = {
     agentWorkbench: "Museboard 智能工作面板",
     agentTab: "智能助手",
     skillTab: "技能",
+    historyTab: "历史",
+    assetsTab: "资产",
+    historyHeading: "运行历史",
+    historyHint: "查看需求简报、输入、输出和重试状态。复用需求会回到明确确认步骤。",
+    historyEmpty: "当前画布还没有智能助手任务。",
+    historyLoadFailed: "无法加载运行历史。",
+    historyOpen: "查看",
+    historyReuse: "重新运行",
+    historyCopy: "复制运行",
+    historyCopied: "运行摘要已复制。",
+    historyPrompt: "提示词",
+    historySourcesMissing: "原始参考图已不在当前画布中。",
+    historyDraftRestored: "需求已回填。请先审核并分析，再确认生成。",
+    assetsHeading: "资产",
+    assetsHint: "上传、生成和编辑的图片即使从画布移除，仍会保存在这里。",
+    assetsEmpty: "尚没有保留的图片资产。",
+    assetsLoadFailed: "无法加载资产。",
+    assetUpload: "上传",
+    assetGeneration: "生成",
+    assetEdit: "编辑",
+    assetOnCanvas: "在画布上",
+    assetRemoved: "已从画布移除",
+    assetLocate: "定位",
+    assetInsert: "插入",
+    assetInserted: "资产已插入画布。",
+    assetCopy: "复制 @文件",
     agentHeading: "图片方向",
     agentSourceEmpty: "请在画布上选择一至三张图片。",
     agentSourceSelected: "张图片已选中。",
@@ -527,6 +583,8 @@ let versionDiffHeatmapToken = 0;
 let appUpdateInfo = null;
 let appUpdateBusy = false;
 let agentSkills = [];
+let agentRunHistoryItems = [];
+let canvasAssets = [];
 let activeAgentRun = null;
 let agentDraftSkillId = null;
 let activeAgentTab = "agent";
@@ -560,6 +618,10 @@ renderColorPalette();
 await loadProjects();
 await loadState();
 await loadAgentSkills().catch((error) => setAgentStatus(error?.message || t("agentSkillLoadFailed"), { error: true }));
+await Promise.all([
+  loadAgentRunHistory().catch(() => {}),
+  loadCanvasAssets().catch(() => {})
+]);
 refreshAppUpdateStatus({ checkRemote: true }).catch(() => {});
 setInterval(loadState, 2000);
 
@@ -1652,6 +1714,43 @@ function initAgentWorkbench() {
   agentRetryButton?.addEventListener("click", () => {
     retryActiveAgentRun().catch((error) => setAgentStatus(error?.message || t("agentAnalyzeFailed"), { error: true }));
   });
+  agentRunHistoryList?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-history-action]");
+    if (!button) return;
+    const runId = button.dataset.agentRunId;
+    if (button.dataset.historyAction === "view") {
+      openAgentRunFromHistory(runId).catch((error) => showToast(error?.message || t("historyLoadFailed")));
+      return;
+    }
+    if (button.dataset.historyAction === "copy") {
+      copyAgentRunSummary(runId).catch((error) => showToast(error?.message || t("historyLoadFailed")));
+      return;
+    }
+    if (button.dataset.historyAction === "reuse") {
+      try {
+        restoreAgentRunDraft(runId);
+      } catch (error) {
+        showToast(error?.message || t("historySourcesMissing"));
+      }
+    }
+  });
+  canvasAssetList?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-asset-action]");
+    if (!button) return;
+    const assetId = button.dataset.assetId;
+    const action = button.dataset.assetAction;
+    if (action === "locate") {
+      locateCanvasAsset(assetId).catch((error) => showToast(error?.message || t("assetsLoadFailed")));
+      return;
+    }
+    if (action === "insert") {
+      insertCanvasAsset(assetId).catch((error) => showToast(error?.message || t("assetsLoadFailed")));
+      return;
+    }
+    if (action === "copy") {
+      copyCanvasAssetFileMention(assetId).catch((error) => showToast(error?.message || t("fileMentionCopyFailed")));
+    }
+  });
   renderAgentSourceSelection();
   renderAgentRun();
 }
@@ -1663,12 +1762,16 @@ async function loadAgentSkills() {
 }
 
 function setAgentTab(tab) {
-  activeAgentTab = tab === "skill" ? "skill" : "agent";
+  activeAgentTab = ["agent", "skill", "history", "assets"].includes(tab) ? tab : "agent";
   agentPanel.hidden = activeAgentTab !== "agent";
   skillPanel.hidden = activeAgentTab !== "skill";
+  historyPanel.hidden = activeAgentTab !== "history";
+  assetsPanel.hidden = activeAgentTab !== "assets";
   agentWorkbench.querySelectorAll("[data-agent-tab]").forEach((button) => {
     button.setAttribute("aria-selected", String(button.dataset.agentTab === activeAgentTab));
   });
+  if (activeAgentTab === "history") loadAgentRunHistory().catch(() => {});
+  if (activeAgentTab === "assets") loadCanvasAssets().catch(() => {});
 }
 
 function selectedAgentSources() {
@@ -1716,6 +1819,7 @@ async function submitAgentRequest() {
       await selectAgentSkill(agentDraftSkillId, { preserveStatus: true });
     }
     renderAgentRun();
+    loadAgentRunHistory().catch(() => {});
     setAgentTab("agent");
   } finally {
     renderAgentSourceSelection();
@@ -1788,6 +1892,7 @@ async function confirmActiveAgentRun() {
     });
     activeAgentRun = payload.agentRun;
     renderAgentRun();
+    loadAgentRunHistory().catch(() => {});
     trackAgentImageJobs(payload);
     pollActiveAgentRun(activeAgentRun.id);
   } catch (error) {
@@ -1808,6 +1913,7 @@ async function retryActiveAgentRun() {
     });
     activeAgentRun = payload.agentRun;
     renderAgentRun();
+    loadAgentRunHistory().catch(() => {});
     trackAgentImageJobs(payload);
     pollActiveAgentRun(activeAgentRun.id);
   } finally {
@@ -1839,7 +1945,7 @@ function pollActiveAgentRun(agentRunId) {
       if (activeAgentRun.status === "running") {
         agentRunPollTimer = window.setTimeout(tick, 2500);
       } else if (["succeeded", "partial", "failed"].includes(activeAgentRun.status)) {
-        await loadState();
+        await Promise.all([loadState(), loadAgentRunHistory().catch(() => {}), loadCanvasAssets().catch(() => {})]);
       }
     } catch (error) {
       if (activeAgentRun?.id === agentRunId) setAgentStatus(error?.message || t("agentAnalyzeFailed"), { error: true });
@@ -2066,6 +2172,223 @@ function renderAgentSkills() {
   }
 }
 
+async function loadAgentRunHistory() {
+  if (!agentRunHistoryList) return;
+  try {
+    const payload = await requestAgentApi("/api/agent-runs?limit=50");
+    agentRunHistoryItems = Array.isArray(payload.agentRuns) ? payload.agentRuns : [];
+    renderAgentRunHistory();
+  } catch (error) {
+    renderAgentRunHistory(error);
+    throw error;
+  }
+}
+
+function renderAgentRunHistory(error = null) {
+  if (!agentRunHistoryList) return;
+  agentRunHistoryList.replaceChildren();
+  if (error) {
+    appendAgentListEmpty(agentRunHistoryList, error.message || t("historyLoadFailed"));
+    return;
+  }
+  if (agentRunHistoryItems.length === 0) {
+    appendAgentListEmpty(agentRunHistoryList, t("historyEmpty"));
+    return;
+  }
+
+  for (const run of agentRunHistoryItems) {
+    const card = document.createElement("article");
+    card.className = "agent-history-card";
+    const heading = document.createElement("strong");
+    heading.textContent = skillName(run.selectedSkillId) + " · " + agentRunStatusLabel(run.status);
+    const request = document.createElement("p");
+    request.className = "agent-history-request";
+    request.textContent = run.rawRequest || "";
+    const prompt = document.createElement("p");
+    prompt.className = "agent-history-prompt";
+    prompt.textContent = t("historyPrompt") + ": " + (run.optimizedPrompt || run.rawRequest || "");
+    const meta = document.createElement("span");
+    meta.className = "agent-history-meta";
+    const outputCount = Array.isArray(run.plannedOutputs) ? run.plannedOutputs.length : 0;
+    const sourceCount = Array.isArray(run.sourceObjectIds) ? run.sourceObjectIds.length : 0;
+    meta.textContent = sourceCount + " refs · " + outputCount + " outputs";
+    const actions = document.createElement("div");
+    actions.className = "agent-list-actions";
+    actions.append(
+      historyActionButton("view", run.id, t("historyOpen")),
+      historyActionButton("copy", run.id, t("historyCopy")),
+      historyActionButton("reuse", run.id, t("historyReuse"))
+    );
+    card.append(heading, request, prompt, meta, actions);
+    agentRunHistoryList.append(card);
+  }
+}
+
+function historyActionButton(action, agentRunId, label) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.historyAction = action;
+  button.dataset.agentRunId = agentRunId;
+  button.textContent = label;
+  return button;
+}
+
+async function copyAgentRunSummary(agentRunId) {
+  const run = agentRunHistoryItems.find((item) => item.id === agentRunId);
+  if (!run) throw new Error(t("historyLoadFailed"));
+  const outputs = Array.isArray(run.plannedOutputs)
+    ? run.plannedOutputs.map((output) => output.label + ": " + output.status).join(", ")
+    : "";
+  const summary = [
+    "Request: " + (run.rawRequest || ""),
+    "Prompt: " + (run.optimizedPrompt || ""),
+    "Skill: " + skillName(run.selectedSkillId),
+    "Sources: " + (run.sourceObjectIds || []).join(", "),
+    "Outputs: " + outputs
+  ].join("\n");
+  await copyTextToClipboard(summary);
+  showToast(t("historyCopied"));
+}
+async function openAgentRunFromHistory(agentRunId) {
+  const payload = await requestAgentApi("/api/agent-runs/" + encodeURIComponent(agentRunId));
+  activeAgentRun = payload.agentRun;
+  agentDraftSkillId = activeAgentRun?.selectedSkillId || agentDraftSkillId;
+  renderAgentRun();
+  setAgentTab("agent");
+}
+
+function restoreAgentRunDraft(agentRunId) {
+  const run = agentRunHistoryItems.find((item) => item.id === agentRunId);
+  const sourceIds = Array.isArray(run?.sourceObjectIds) ? run.sourceObjectIds : [];
+  const availableSources = sourceIds.filter((id) => state?.objects?.some((object) => object.id === id));
+  if (!run || availableSources.length !== sourceIds.length || availableSources.length < 1) {
+    throw new Error(t("historySourcesMissing"));
+  }
+  setLocalSelection(availableSources, { fromUser: true });
+  render();
+  if (agentRequest) {
+    agentRequest.value = run.rawRequest || "";
+    agentRequest.focus();
+    agentRequest.setSelectionRange(agentRequest.value.length, agentRequest.value.length);
+  }
+  agentDraftSkillId = run.selectedSkillId || null;
+  activeAgentRun = null;
+  renderAgentRun();
+  setAgentTab("agent");
+  showToast(t("historyDraftRestored"));
+}
+
+async function loadCanvasAssets() {
+  if (!canvasAssetList) return;
+  try {
+    const payload = await requestAgentApi("/api/assets");
+    canvasAssets = Array.isArray(payload.assets) ? payload.assets : [];
+    renderCanvasAssets();
+  } catch (error) {
+    renderCanvasAssets(error);
+    throw error;
+  }
+}
+
+function renderCanvasAssets(error = null) {
+  if (!canvasAssetList) return;
+  canvasAssetList.replaceChildren();
+  if (error) {
+    appendAgentListEmpty(canvasAssetList, error.message || t("assetsLoadFailed"));
+    return;
+  }
+  if (canvasAssets.length === 0) {
+    appendAgentListEmpty(canvasAssetList, t("assetsEmpty"));
+    return;
+  }
+
+  for (const asset of canvasAssets) {
+    const card = document.createElement("article");
+    card.className = "canvas-asset-card";
+    const preview = document.createElement("img");
+    preview.className = "canvas-asset-preview";
+    preview.src = asset.src;
+    preview.alt = "";
+    preview.loading = "lazy";
+    const content = document.createElement("div");
+    content.className = "canvas-asset-content";
+    const name = document.createElement("strong");
+    name.textContent = asset.name || asset.id;
+    const meta = document.createElement("span");
+    meta.className = "canvas-asset-meta";
+    const objectIds = Array.isArray(asset.objectIds) ? asset.objectIds : [];
+    meta.textContent = assetKindLabel(asset.kind) + " · " + (objectIds.length ? objectIds.length + " " + t("assetOnCanvas") : t("assetRemoved"));
+    const actions = document.createElement("div");
+    actions.className = "agent-list-actions";
+    const locate = assetActionButton("locate", asset.id, t("assetLocate"));
+    locate.disabled = objectIds.length === 0;
+    actions.append(
+      locate,
+      assetActionButton("insert", asset.id, t("assetInsert")),
+      assetActionButton("copy", asset.id, t("assetCopy"))
+    );
+    content.append(name, meta, actions);
+    card.append(preview, content);
+    canvasAssetList.append(card);
+  }
+}
+
+function appendAgentListEmpty(container, text) {
+  const message = document.createElement("p");
+  message.className = "agent-list-empty";
+  message.textContent = text;
+  container.append(message);
+}
+
+function assetActionButton(action, assetId, label) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.assetAction = action;
+  button.dataset.assetId = assetId;
+  button.textContent = label;
+  return button;
+}
+
+function assetKindLabel(kind) {
+  if (kind === "generation") return t("assetGeneration");
+  if (kind === "edit") return t("assetEdit");
+  return t("assetUpload");
+}
+
+async function locateCanvasAsset(assetId) {
+  const asset = canvasAssets.find((item) => item.id === assetId);
+  const objectId = asset?.objectIds?.find((id) => state?.objects?.some((object) => object.id === id));
+  const object = state?.objects?.find((item) => item.id === objectId);
+  if (!object) throw new Error(t("assetRemoved"));
+  await selectObject(object.id, { fromUser: true });
+  frameCanvasObject(object);
+}
+
+async function insertCanvasAsset(assetId) {
+  const payload = await requestAgentApi("/api/assets/" + encodeURIComponent(assetId) + "/insert", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(withExpectedCanvasScope({}))
+  });
+  await loadState();
+  await loadCanvasAssets();
+  const object = state?.objects?.find((item) => item.id === payload.id) || payload;
+  if (object?.id) {
+    await selectObject(object.id, { fromUser: true });
+    frameCanvasObject(object);
+  }
+  showToast(t("assetInserted"));
+}
+
+async function copyCanvasAssetFileMention(assetId) {
+  const payload = await requestAgentApi("/api/assets/" + encodeURIComponent(assetId) + "/file-mention");
+  try {
+    await copyTextToClipboard(payload.fileMention);
+    showToast(t("fileMentionCopied"));
+  } catch {
+    throw new Error(t("fileMentionCopyFailed"));
+  }
+}
 function setAgentStatus(message, { error = false } = {}) {
   if (!agentRunStatus) return;
   agentRunStatus.textContent = message || "";
@@ -2125,6 +2448,7 @@ async function loadState() {
   state.selection = selectedId;
   render();
   renderAgentSourceSelection();
+  if (activeAgentTab === "assets") loadCanvasAssets().catch(() => {});
   if (autoFocusObject) frameCanvasObject(autoFocusObject);
 }
 

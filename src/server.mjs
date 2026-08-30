@@ -11,7 +11,8 @@ import { createCodexAgentAnalyzer } from "./agent-analyzer.mjs";
 import { AgentRunExecutionError, recordAgentRunJobFailure, retryAgentRunJobs, startAgentRunBatch } from "./agent-run-execution.mjs";
 import { SKILL_DESCRIPTORS } from "./agent-run-contracts.mjs";
 import { buildBusinessSkillJobPlan, normalizeBusinessSkillInputs } from "./business-skill-recipes.mjs";
-import { readAgentRun } from "./agent-run-store.mjs";
+import { listAgentRuns, readAgentRun } from "./agent-run-store.mjs";
+import { canvasAssetFileMention, insertCanvasAsset, listCanvasAssets } from "./asset-library.mjs";
 import { assetsDirFor, projectRegistryPath, publicDir, runtimePathFor } from "./paths.mjs";
 import { exportLayerGroupPsd } from "./psd-export.mjs";
 import { addImage, addObject, deleteObject, deleteObjects, ensureProjectStore, markStaleJobPlaceholders, promptHistory, readState, reorderLayerGroupLayer, restoreObjects, searchObjects, setLayerGroupOrder, updateObject, updateObjects, updateProjectMeta, updateSelection, updateViewport, versionGroups } from "./store.mjs";
@@ -174,6 +175,13 @@ async function handleRequest(request, response, context) {
     return sendJson(response, 201, { agentRun });
   }
 
+  if (request.method === "GET" && pathname === "/api/agent-runs") {
+    const agentRuns = await listAgentRuns(projectDir, {
+      canvasId: agentRunCanvasIdFor(project),
+      limit: parsePositiveIntegerQueryParam(requestUrl.searchParams, "limit", 50)
+    });
+    return sendJson(response, 200, { agentRuns });
+  }
   const agentRunAnswersMatch = /^\/api\/agent-runs\/([^/]+)\/answers$/.exec(pathname);
   if (request.method === "POST" && agentRunAnswersMatch) {
     const body = await readJson(request, context.registry);
@@ -231,6 +239,31 @@ async function handleRequest(request, response, context) {
     return sendJson(response, 200, { agentRun });
   }
 
+  if (request.method === "GET" && pathname === "/api/assets") {
+    const assets = await listCanvasAssets(projectDir, {
+      canvasId: project.canvasId || null
+    });
+    return sendJson(response, 200, { assets });
+  }
+
+  const assetMentionMatch = /^\/api\/assets\/([^/]+)\/file-mention$/.exec(pathname);
+  if (request.method === "GET" && assetMentionMatch) {
+    return sendJson(response, 200, {
+      fileMention: await canvasAssetFileMention(projectDir, {
+        canvasId: project.canvasId || null,
+        assetId: assetMentionMatch[1]
+      })
+    });
+  }
+  const assetInsertMatch = /^\/api\/assets\/([^/]+)\/insert$/.exec(pathname);
+  if (request.method === "POST" && assetInsertMatch) {
+    const body = await readJson(request, context.registry);
+    assertExpectedCanvasScope(project, body);
+    return sendJson(response, 201, await insertCanvasAsset(projectDir, {
+      canvasId: project.canvasId || null,
+      assetId: assetInsertMatch[1]
+    }));
+  }
   if (request.method === "GET" && pathname === "/api/search") {
     return sendJson(response, 200, await searchObjects(projectDir, {
       query: requestUrl.searchParams.get("q") || requestUrl.searchParams.get("query") || "",
@@ -270,7 +303,7 @@ async function handleRequest(request, response, context) {
     const body = await readJson(request, context.registry);
     assertExpectedCanvasScope(project, body);
     requireSingleImageInput(body);
-    return sendJson(response, 201, await addImage(projectDir, body, storeOptionsFor(project)));
+    return sendJson(response, 201, await addImage(projectDir, { ...body, assetKind: "upload" }, storeOptionsFor(project)));
   }
 
   if (request.method === "POST" && pathname === "/api/objects") {

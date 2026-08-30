@@ -399,3 +399,77 @@ test("Product Marketing Set confirmation queues fixed outputs and retries only f
     await new Promise((resolve) => server.close(resolve));
   }
 });
+test("History and Assets APIs list retained runs and reinsert a removed canvas image", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-history-assets-api-"));
+  const persistentRegistryPath = path.join(projectDir, "registry.json");
+  const { server, url } = await createServer({
+    projectDir,
+    port: 0,
+    autoCollect: false,
+    persistentRegistryPath,
+    agentAnalyzer: async () => readyCandidate()
+  });
+  const base = url.replace(/\?.*/, "");
+  const search = new URL(url).search;
+
+  try {
+    const imageResponse = await fetch(base + "api/images" + search, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        dataUrl: "data:image/png;base64," + pngOne,
+        name: "retained-source.png"
+      })
+    });
+    assert.equal(imageResponse.status, 201);
+    const image = await imageResponse.json();
+
+    const createdResponse = await fetch(base + "api/agent-runs" + search, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "history-api-run",
+        sourceObjectIds: [image.id],
+        rawRequest: "Prepare this product for a warm campaign."
+      })
+    });
+    assert.equal(createdResponse.status, 201);
+
+    const historyResponse = await fetch(base + "api/agent-runs" + search + "&limit=10");
+    assert.equal(historyResponse.status, 200);
+    const history = await historyResponse.json();
+    assert.deepEqual(history.agentRuns.map((agentRun) => agentRun.id), ["history-api-run"]);
+
+    const assetsResponse = await fetch(base + "api/assets" + search);
+    assert.equal(assetsResponse.status, 200);
+    const assets = await assetsResponse.json();
+    assert.equal(assets.assets.length, 1);
+    assert.deepEqual(assets.assets[0].objectIds, [image.id]);
+
+    const mentionResponse = await fetch(base + "api/assets/" + encodeURIComponent(assets.assets[0].id) + "/file-mention" + search);
+    assert.equal(mentionResponse.status, 200);
+    const mention = await mentionResponse.json();
+    assert.equal(mention.fileMention, "@" + image.assetPath);
+
+    const deletedResponse = await fetch(base + "api/objects/" + encodeURIComponent(image.id) + search, {
+      method: "DELETE"
+    });
+    assert.equal(deletedResponse.status, 200);
+
+    const retainedResponse = await fetch(base + "api/assets" + search);
+    const retained = await retainedResponse.json();
+    assert.deepEqual(retained.assets[0].objectIds, []);
+
+    const insertedResponse = await fetch(base + "api/assets/" + encodeURIComponent(retained.assets[0].id) + "/insert" + search, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({})
+    });
+    assert.equal(insertedResponse.status, 201);
+    const inserted = await insertedResponse.json();
+    assert.notEqual(inserted.id, image.id);
+    assert.equal(inserted.assetPath, image.assetPath);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

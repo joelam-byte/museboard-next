@@ -6,6 +6,11 @@ import crypto from "node:crypto";
 export const pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const publicDir = path.join(pluginRoot, "public");
 export const maxSafePathSegmentLength = 120;
+const windowsReservedPathSegments = new Set([
+  "CON", "PRN", "AUX", "NUL",
+  "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+  "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+]);
 
 export function resolveProjectDir(value) {
   return path.resolve(value || process.env.CODEX_CANVAS_PROJECT_DIR || process.cwd());
@@ -65,10 +70,16 @@ export function safePathSegment(value) {
 function storagePathSegment(value) {
   const raw = String(value || "default");
   const safe = safePathSegment(raw);
-  if (safe === raw && raw.length <= maxSafePathSegmentLength) return safe;
+  if (safe === raw && raw.length <= maxSafePathSegmentLength && isCrossPlatformStorageSegment(raw)) return safe;
 
   const hash = crypto.createHash("sha256").update(raw).digest("base64url").slice(0, 12);
   const readableLength = maxSafePathSegmentLength - hash.length - 1;
   const readable = safe.slice(0, readableLength) || "id";
   return `${readable}-${hash}`;
+}
+
+function isCrossPlatformStorageSegment(value) {
+  if (value === "." || value === ".." || /[. ]$/.test(value)) return false;
+  const baseName = value.split(".", 1)[0].toUpperCase();
+  return !windowsReservedPathSegments.has(baseName);
 }

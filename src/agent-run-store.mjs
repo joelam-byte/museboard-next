@@ -182,8 +182,15 @@ async function removeAbandonedLock(lockPath) {
     throw error;
   }
   const age = Date.now() - stat.mtimeMs;
+  const ownerAlive = Number.isInteger(owner?.pid) ? processIsAlive(owner.pid) : null;
+  if (ownerAlive === false) {
+    await fs.unlink(lockPath).catch((error) => {
+      if (error?.code !== "ENOENT") throw error;
+    });
+    return;
+  }
   if (age < staleLockMs) return;
-  if (Number.isInteger(owner?.pid) && processIsAlive(owner.pid)) return;
+  if (ownerAlive === true) return;
   await fs.unlink(lockPath).catch((error) => {
     if (error?.code !== "ENOENT") throw error;
   });

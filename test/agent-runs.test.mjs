@@ -237,6 +237,60 @@ test("AgentRun storage writes the exact thread path and reports missing or corru
   );
 });
 
+test("a fresh lock with a dead owner is removed so a restarted process can update its run", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-run-dead-lock-"));
+  const run = initialRun();
+  await writeAgentRun(projectDir, run);
+  const deadOwnerPid = await exitedProcessId();
+  const lockPath = `${agentRunPathFor(projectDir, run.canvasId, run.id)}.lock`;
+  await fs.writeFile(lockPath, `${JSON.stringify({
+    token: "crashed-owner",
+    pid: deadOwnerPid,
+    createdAt: new Date().toISOString()
+  })}\n`);
+
+  const updated = await updateAgentRun(projectDir, { canvasId: run.canvasId, agentRunId: run.id }, (current) => ({
+    ...current,
+    rawRequest: "Recovered after a process restart."
+  }));
+
+  assert.equal(updated.rawRequest, "Recovered after a process restart.");
+  await assert.rejects(fs.access(lockPath), (error) => error.code === "ENOENT");
+});
+
+test("AgentRun storage hashes Windows-reserved and normalized canvas and run ids", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-run-windows-paths-"));
+  const cases = [
+    { canvasId: "CON", agentRunId: "run-canvas-con" },
+    { canvasId: "con", agentRunId: "run-canvas-con-lower" },
+    { canvasId: "canvas-windows", agentRunId: "CON" },
+    { canvasId: "canvas-windows", agentRunId: "con" },
+    { canvasId: "canvas-windows", agentRunId: "run." },
+    { canvasId: "canvas-windows", agentRunId: "run " }
+  ];
+  const paths = cases.map(({ canvasId, agentRunId }) => agentRunPathFor(projectDir, canvasId, agentRunId));
+
+  assert.equal(new Set(paths.map((filePath) => filePath.toLowerCase())).size, cases.length);
+  for (const filePath of paths) {
+    const segments = path.relative(projectDir, filePath).split(path.sep);
+    assert.notEqual(segments[2].toUpperCase(), "CON");
+    assert.notEqual(segments[4].toUpperCase(), "CON");
+    assert.equal(/[. ]$/.test(segments[2]), false);
+    assert.equal(/[. ]$/.test(segments[4]), false);
+  }
+
+  await Promise.all(cases.map(({ canvasId, agentRunId }) => writeAgentRun(projectDir, initialRun({
+    canvasId,
+    id: agentRunId,
+    rawRequest: `Store ${canvasId}/${agentRunId}`
+  }))));
+  for (const { canvasId, agentRunId } of cases) {
+    const restored = await readAgentRun(projectDir, { canvasId, agentRunId });
+    assert.equal(restored.id, agentRunId);
+    assert.equal(restored.canvasId, canvasId);
+  }
+});
+
 test("atomic writes never expose partial JSON and leave no temporary files", async () => {
   const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-run-atomic-"));
   const run = initialRun();
@@ -402,6 +456,24 @@ function startWorker(args) {
       } catch (error) {
         reject(new Error(`AgentRun worker returned invalid JSON: ${stdout || stderr}`, { cause: error }));
       }
+    });
+  });
+}
+
+function exitedProcessId() {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ["-e", ""], {
+      stdio: "ignore",
+      windowsHide: true
+    });
+    const pid = child.pid;
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0 || !Number.isInteger(pid)) {
+        reject(new Error(`Unable to obtain a terminated process id: ${code}`));
+        return;
+      }
+      resolve(pid);
     });
   });
 }

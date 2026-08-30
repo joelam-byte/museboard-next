@@ -1,0 +1,413 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import {
+  analyzeAgentRun,
+  answerAgentRunClarifications,
+  selectAgentRunSkill
+} from "../src/agent-brief-service.mjs";
+import { readAgentRun } from "../src/agent-run-store.mjs";
+import { jobsDirFor } from "../src/paths.mjs";
+import { addImage } from "../src/store.mjs";
+
+const pngOne = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+const expectedSkillIds = [
+  "quick-edit",
+  "expand",
+  "remove-bg",
+  "edit-text",
+  "edit-elements",
+  "xiaohongshu-cover",
+  "product-marketing-set"
+];
+
+function validBrief() {
+  return {
+    modifications: ["Replace the background with a warm studio setting."],
+    preservationRules: ["Keep the product shape and logo unchanged."],
+    style: "Warm editorial product photography",
+    materials: ["matte paper", "soft fabric"],
+    composition: "Centered product with generous title space",
+    textRequirements: [],
+    outputRequirements: ["One PNG image at 1080 by 1440 pixels."]
+  };
+}
+
+function validPlannedOutput(overrides = {}) {
+  return {
+    id: "output-main",
+    label: "Main image",
+    purpose: "Primary campaign image",
+    format: "png",
+    width: 1080,
+    height: 1440,
+    aspectRatio: "3:4",
+    status: "planned",
+    jobId: null,
+    outputObjectIds: [],
+    error: null,
+    ...overrides
+  };
+}
+
+function validCandidate(overrides = {}) {
+  return {
+    recommendedSkillId: "xiaohongshu-cover",
+    structuredBrief: validBrief(),
+    clarificationQuestions: [],
+    optimizedPrompt: "Create a warm editorial 3:4 product cover while preserving the product and logo.",
+    plannedOutputs: [validPlannedOutput()],
+    ...overrides
+  };
+}
+
+test("analysis adapter receives complete ordered image and request context for one to three sources", async (t) => {
+  for (const sourceCount of [1, 2, 3]) {
+    await t.test(`${sourceCount} source image${sourceCount === 1 ? "" : "s"}`, async () => {
+      const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), `museboard-agent-brief-${sourceCount}-`));
+      const canvasId = `canvas-${sourceCount}`;
+      const sources = [];
+      for (let index = 0; index < sourceCount; index += 1) {
+        sources.push(await addImage(projectDir, {
+          dataUrl: `data:image/png;base64,${pngOne}`,
+          name: `source-${index + 1}.png`,
+          prompt: `Original source ${index + 1}`,
+          allowDuplicate: true
+        }, { canvasId }));
+      }
+
+      let receivedContext;
+      const run = await analyzeAgentRun(projectDir, {
+        id: `run-${sourceCount}`,
+        canvasId,
+        sourceObjectIds: sources.map((source) => source.id),
+        rawRequest: "Turn these sources into a warm product campaign cover."
+      }, {
+        analyze: async (context) => {
+          receivedContext = context;
+          return validCandidate();
+        }
+      });
+
+      assert.deepEqual(receivedContext.request, {
+        agentRunId: `run-${sourceCount}`,
+        canvasId,
+        rawRequest: "Turn these sources into a warm product campaign cover.",
+        sourceObjectIds: sources.map((source) => source.id),
+        clarificationAnswers: {}
+      });
+      assert.deepEqual(receivedContext.sources.map((source) => source.objectId), sources.map((source) => source.id));
+      assert.deepEqual(receivedContext.allowedSkillIds, expectedSkillIds);
+      assert.deepEqual(receivedContext.skillDescriptors.map((descriptor) => descriptor.id), expectedSkillIds);
+      for (const [index, source] of receivedContext.sources.entries()) {
+        assert.equal(source.name, `source-${index + 1}.png`);
+        assert.equal(source.mimeType, "image/png");
+        assert.equal(source.dataUrl, `data:image/png;base64,${pngOne}`);
+        assert.equal(source.url, null);
+        assert.equal(source.naturalWidth, 1);
+        assert.equal(source.naturalHeight, 1);
+        assert.equal(source.prompt, `Original source ${index + 1}`);
+      }
+      assert.equal(run.status, "ready");
+      assert.deepEqual(run.structuredBrief, validBrief());
+      assert.deepEqual(run.plannedOutputs, [validPlannedOutput()]);
+      assert.equal(run.recommendedSkillId, "xiaohongshu-cover");
+      assert.equal(run.selectedSkillId, "xiaohongshu-cover");
+      assert.equal(run.optimizedPrompt, validCandidate().optimizedPrompt);
+      assert.deepEqual(run.childJobIds, []);
+      assert.deepEqual(run.outputObjectIds, []);
+      assert.deepEqual(await readAgentRun(projectDir, { canvasId, agentRunId: run.id }), run);
+      await assert.rejects(fs.access(jobsDirFor(projectDir, canvasId)), (error) => error.code === "ENOENT");
+    });
+  }
+});
+
+test("only result-significant clarification questions block a run from becoming ready", async () => {
+  const cases = [
+    {
+      label: "result-significant",
+      question: {
+        id: "replacement-copy",
+        prompt: "What exact replacement copy must appear in the image?",
+        required: true,
+        options: []
+      },
+      expectedStatus: "needs_clarification"
+    },
+    {
+      label: "non-blocking preference",
+      question: {
+        id: "accent-preference",
+        prompt: "Would you prefer a peach or coral accent?",
+        required: false,
+        options: ["Peach", "Coral"]
+      },
+      expectedStatus: "ready"
+    }
+  ];
+
+  for (const testCase of cases) {
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), `museboard-agent-clarification-${testCase.label}-`));
+    const canvasId = `canvas-${testCase.label}`;
+    const source = await addImage(projectDir, {
+      dataUrl: `data:image/png;base64,${pngOne}`,
+      name: "source.png",
+      allowDuplicate: true
+    }, { canvasId });
+
+    const run = await analyzeAgentRun(projectDir, {
+      id: `run-${testCase.label}`,
+      canvasId,
+      sourceObjectIds: [source.id],
+      rawRequest: "Replace the headline and keep the existing layout."
+    }, {
+      analyze: async () => validCandidate({ clarificationQuestions: [testCase.question] })
+    });
+
+    assert.equal(run.status, testCase.expectedStatus);
+    assert.deepEqual(run.clarificationQuestions, [testCase.question]);
+    assert.deepEqual(run.childJobIds, []);
+    assert.deepEqual(run.outputObjectIds, []);
+  }
+});
+
+test("an invalid recommended Skill is accepted only after exactly one schema repair", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-repair-success-"));
+  const canvasId = "canvas-repair-success";
+  const source = await addImage(projectDir, {
+    dataUrl: `data:image/png;base64,${pngOne}`,
+    name: "source.png",
+    allowDuplicate: true
+  }, { canvasId });
+  let repairCalls = 0;
+
+  const run = await analyzeAgentRun(projectDir, {
+    id: "run-repair-success",
+    canvasId,
+    sourceObjectIds: [source.id],
+    rawRequest: "Create a product cover with a stable supported workflow."
+  }, {
+    analyze: async () => validCandidate({ recommendedSkillId: "made-up-skill" }),
+    repair: async ({ candidate, validationError, context }) => {
+      repairCalls += 1;
+      assert.equal(candidate.recommendedSkillId, "made-up-skill");
+      assert.equal(validationError.code, "agent-run-validation");
+      assert.equal(context.request.agentRunId, "run-repair-success");
+      return validCandidate({ recommendedSkillId: "product-marketing-set" });
+    }
+  });
+
+  assert.equal(repairCalls, 1);
+  assert.equal(run.recommendedSkillId, "product-marketing-set");
+  assert.equal(run.selectedSkillId, "product-marketing-set");
+  assert.equal(run.status, "ready");
+});
+
+test("a second schema failure throws clearly and leaves the persisted run ungenerated", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-repair-failure-"));
+  const canvasId = "canvas-repair-failure";
+  const source = await addImage(projectDir, {
+    dataUrl: `data:image/png;base64,${pngOne}`,
+    name: "source.png",
+    allowDuplicate: true
+  }, { canvasId });
+  let repairCalls = 0;
+
+  await assert.rejects(
+    () => analyzeAgentRun(projectDir, {
+      id: "run-repair-failure",
+      canvasId,
+      sourceObjectIds: [source.id],
+      rawRequest: "Create a cover without triggering any generation yet."
+    }, {
+      analyze: async () => ({ ...validCandidate(), unexpectedGraph: { nodes: [], edges: [] } }),
+      repair: async () => {
+        repairCalls += 1;
+        return validCandidate({
+          plannedOutputs: [validPlannedOutput({ status: "queued", jobId: "job-forbidden" })]
+        });
+      }
+    }),
+    (error) => (
+      error.code === "agent-brief-schema-invalid"
+      && error.statusCode === 422
+      && error.message.includes("one schema-repair attempt")
+      && error.cause?.code === "agent-run-validation"
+    )
+  );
+
+  assert.equal(repairCalls, 1);
+  const stored = await readAgentRun(projectDir, {
+    canvasId,
+    agentRunId: "run-repair-failure"
+  });
+  assert.equal(stored.status, "analyzing");
+  assert.equal(stored.structuredBrief, null);
+  assert.deepEqual(stored.plannedOutputs, []);
+  assert.deepEqual(stored.childJobIds, []);
+  assert.deepEqual(stored.outputObjectIds, []);
+  await assert.rejects(fs.access(jobsDirFor(projectDir, canvasId)), (error) => error.code === "ENOENT");
+});
+
+test("all significant clarifications must be answered before ready and answers are persisted", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-clarification-answer-"));
+  const canvasId = "canvas-clarification-answer";
+  const source = await addImage(projectDir, {
+    dataUrl: `data:image/png;base64,${pngOne}`,
+    name: "source.png",
+    allowDuplicate: true
+  }, { canvasId });
+  const questions = [
+    {
+      id: "replacement-copy",
+      prompt: "What exact replacement copy must appear?",
+      required: true,
+      options: []
+    },
+    {
+      id: "accent-preference",
+      prompt: "Which optional accent do you prefer?",
+      required: false,
+      options: ["Peach", "Coral"]
+    }
+  ];
+  await analyzeAgentRun(projectDir, {
+    id: "run-clarification-answer",
+    canvasId,
+    sourceObjectIds: [source.id],
+    rawRequest: "Replace the headline without changing the layout."
+  }, {
+    analyze: async () => validCandidate({ clarificationQuestions: questions })
+  });
+  let finalAnalysisCalls = 0;
+
+  await assert.rejects(
+    () => answerAgentRunClarifications(projectDir, {
+      canvasId,
+      agentRunId: "run-clarification-answer",
+      answers: { "accent-preference": "Peach" }
+    }),
+    (error) => error.code === "agent-brief-clarification-required" && error.missingQuestionIds[0] === "replacement-copy"
+  );
+  assert.equal((await readAgentRun(projectDir, {
+    canvasId,
+    agentRunId: "run-clarification-answer"
+  })).status, "needs_clarification");
+
+  const finalPrompt = "Replace the headline with 'Better mornings start here'; preserve the layout and use a peach accent.";
+  const ready = await answerAgentRunClarifications(projectDir, {
+    canvasId,
+    agentRunId: "run-clarification-answer",
+    answers: {
+      "replacement-copy": "Better mornings start here",
+      "accent-preference": "Peach"
+    }
+  }, {
+    analyze: async (context) => {
+      finalAnalysisCalls += 1;
+      assert.deepEqual(context.request.clarificationAnswers, {
+        "replacement-copy": "Better mornings start here",
+        "accent-preference": "Peach"
+      });
+      return validCandidate({ optimizedPrompt: finalPrompt });
+    }
+  });
+  assert.equal(finalAnalysisCalls, 1);
+  assert.equal(ready.status, "ready");
+  assert.equal(ready.optimizedPrompt, finalPrompt);
+  assert.deepEqual(ready.clarificationAnswers, {
+    "replacement-copy": "Better mornings start here",
+    "accent-preference": "Peach"
+  });
+  assert.deepEqual(await readAgentRun(projectDir, { canvasId, agentRunId: ready.id }), ready);
+});
+
+test("clarification reanalysis remains blocked when it discovers another significant question", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-clarification-iterative-"));
+  const canvasId = "canvas-clarification-iterative";
+  const source = await addImage(projectDir, {
+    dataUrl: `data:image/png;base64,${pngOne}`,
+    name: "source.png",
+    allowDuplicate: true
+  }, { canvasId });
+  await analyzeAgentRun(projectDir, {
+    id: "run-clarification-iterative",
+    canvasId,
+    sourceObjectIds: [source.id],
+    rawRequest: "Create a campaign image for a specific market and format."
+  }, {
+    analyze: async () => validCandidate({
+      clarificationQuestions: [{
+        id: "market",
+        prompt: "Which market is this for?",
+        required: true,
+        options: ["Singapore", "Japan"]
+      }]
+    })
+  });
+  const nextQuestion = {
+    id: "legal-copy",
+    prompt: "What exact required legal copy must appear?",
+    required: true,
+    options: []
+  };
+
+  const stillBlocked = await answerAgentRunClarifications(projectDir, {
+    canvasId,
+    agentRunId: "run-clarification-iterative",
+    answers: { market: "Singapore" }
+  }, {
+    analyze: async () => validCandidate({ clarificationQuestions: [nextQuestion] })
+  });
+
+  assert.equal(stillBlocked.status, "needs_clarification");
+  assert.deepEqual(stillBlocked.clarificationQuestions, [nextQuestion]);
+  assert.deepEqual(stillBlocked.clarificationAnswers, { market: "Singapore" });
+  assert.deepEqual(stillBlocked.childJobIds, []);
+});
+
+test("a user can replace the selected stable Skill and optimized prompt before confirmation", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-select-skill-"));
+  const canvasId = "canvas-select-skill";
+  const source = await addImage(projectDir, {
+    dataUrl: `data:image/png;base64,${pngOne}`,
+    name: "source.png",
+    allowDuplicate: true
+  }, { canvasId });
+  const analyzed = await analyzeAgentRun(projectDir, {
+    id: "run-select-skill",
+    canvasId,
+    sourceObjectIds: [source.id],
+    rawRequest: "Prepare a clean background edit while keeping the product unchanged."
+  }, {
+    analyze: async () => validCandidate()
+  });
+  assert.equal(analyzed.selectedSkillId, "xiaohongshu-cover");
+
+  const optimizedPrompt = "Remove only the background; preserve every foreground pixel and export one transparent PNG.";
+  const selected = await selectAgentRunSkill(projectDir, {
+    canvasId,
+    agentRunId: analyzed.id,
+    selectedSkillId: "remove-bg",
+    optimizedPrompt
+  });
+  assert.equal(selected.recommendedSkillId, "xiaohongshu-cover");
+  assert.equal(selected.selectedSkillId, "remove-bg");
+  assert.equal(selected.optimizedPrompt, optimizedPrompt);
+  assert.deepEqual(await readAgentRun(projectDir, { canvasId, agentRunId: analyzed.id }), selected);
+
+  await assert.rejects(
+    () => selectAgentRunSkill(projectDir, {
+      canvasId,
+      agentRunId: analyzed.id,
+      selectedSkillId: "custom-unapproved-skill",
+      optimizedPrompt: "This invalid selection must never persist."
+    }),
+    (error) => error.code === "agent-run-validation" && error.message.includes("selectedSkillId")
+  );
+  const unchanged = await readAgentRun(projectDir, { canvasId, agentRunId: analyzed.id });
+  assert.equal(unchanged.selectedSkillId, "remove-bg");
+  assert.equal(unchanged.optimizedPrompt, optimizedPrompt);
+});

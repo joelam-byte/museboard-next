@@ -128,6 +128,37 @@ export function validateStructuredBrief(value) {
   return value;
 }
 
+export function validateAgentBriefCandidate(value) {
+  assertStrictObject(value, "AgentBriefCandidate", [
+    "recommendedSkillId",
+    "structuredBrief",
+    "clarificationQuestions",
+    "optimizedPrompt",
+    "plannedOutputs"
+  ]);
+  assertSkillId(value.recommendedSkillId, "AgentBriefCandidate.recommendedSkillId");
+  validateStructuredBrief(value.structuredBrief);
+  validateClarificationQuestions(value.clarificationQuestions);
+  assertNonEmptyString(value.optimizedPrompt, "AgentBriefCandidate.optimizedPrompt", 60_000);
+  if (!Array.isArray(value.plannedOutputs) || value.plannedOutputs.length === 0) {
+    invalid("must contain at least one item", "AgentBriefCandidate.plannedOutputs");
+  }
+  value.plannedOutputs.forEach((output, index) => {
+    const outputPath = `AgentBriefCandidate.plannedOutputs[${index}]`;
+    validatePlannedOutput(output, outputPath);
+    if (
+      output.status !== "planned"
+      || output.jobId !== null
+      || output.outputObjectIds.length !== 0
+      || output.error !== null
+    ) {
+      invalid("must describe an unstarted planned output", outputPath);
+    }
+  });
+  assertUniqueValues(value.plannedOutputs.map((output) => output.id), "AgentBriefCandidate.plannedOutputs", "output ids");
+  return value;
+}
+
 export function validatePlannedOutput(value, path = "PlannedOutput") {
   assertStrictObject(value, path, [
     "id",

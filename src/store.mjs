@@ -715,7 +715,7 @@ export async function addImage(projectDir, input, options = {}) {
       prompt: sanitizeString(input.prompt, "", 4000),
       imagegenPrompt: sanitizeString(input.imagegenPrompt, "", 20000),
       sourceObjectId: typeof input.sourceObjectId === "string" ? input.sourceObjectId.slice(0, 300) : null,
-      batchId: typeof input.batchId === "string" ? input.batchId.slice(0, 300) : null,
+      ...lightweightProvenanceFields(input),
       layoutMode: sanitizeString(input.layoutMode, "manual", 80),
       x: Number.isFinite(input.x) ? sanitizeCoordinate(input.x) : 120 + (count % 5) * 56,
       y: Number.isFinite(input.y) ? sanitizeCoordinate(input.y) : 120 + (count % 7) * 44,
@@ -983,6 +983,7 @@ function normalizePersistedObject(object, context = {}) {
     normalized.strokeWidth = sanitizeStrokeWidth(object.strokeWidth);
   }
   sanitizeAnnotationMetadata(normalized, object);
+  sanitizeLightweightProvenance(normalized, object);
   if (type === "annotation") {
     normalized.annotationKind = sanitizeString(object.annotationKind, "arrow-note", 80);
     normalized.label = sanitizeString(object.label, "", 2000, false);
@@ -1368,13 +1369,17 @@ function sanitizeObjectPatch(patch = {}) {
   ]) {
     if (Number.isFinite(patch[key])) next[key] = sanitizeDimension(patch[key]);
   }
-  for (const key of ["name", "text", "label", "color", "stroke", "status", "error", "layoutMode", "sourceObjectId", "jobId", "annotationTargetId", "annotationSessionId", "annotationRole", "annotationKind", "layerGroupId", "layerGroupName", "layerGroupSourceObjectId", "layerGroupKind", "layerGroupBackgroundStatus", "prompt", "imagegenPrompt"]) {
+  for (const key of ["name", "text", "label", "color", "stroke", "status", "error", "layoutMode", "sourceObjectId", "agentRunId", "parentVersionId", "batchId", "jobId", "annotationTargetId", "annotationSessionId", "annotationRole", "annotationKind", "layerGroupId", "layerGroupName", "layerGroupSourceObjectId", "layerGroupKind", "layerGroupBackgroundStatus", "prompt", "imagegenPrompt"]) {
     if (typeof patch[key] === "string") {
       const limit = key === "text" || key === "label" ? 2000 : key === "prompt" ? 4000 : key === "imagegenPrompt" ? 20000 : 300;
       next[key] = patch[key].slice(0, limit);
     }
   }
   if (typeof patch.layerGroupLocked === "boolean") next.layerGroupLocked = patch.layerGroupLocked;
+  if (Array.isArray(patch.sourceObjectIds)) {
+    const sourceObjectIds = sanitizeSourceObjectIds(patch.sourceObjectIds);
+    if (sourceObjectIds.length > 0) next.sourceObjectIds = sourceObjectIds;
+  }
   if (patch.crop && typeof patch.crop === "object") {
     const crop = sanitizeCrop(patch.crop);
     if (crop) next.crop = crop;
@@ -1408,6 +1413,42 @@ function sanitizeAnnotationMetadata(target, source = {}) {
     delete target.jobId;
   }
   return target;
+}
+
+function lightweightProvenanceFields(source = {}) {
+  const fields = {};
+  sanitizeLightweightProvenance(fields, source);
+  if (!Object.hasOwn(source, "batchId")) fields.batchId = null;
+  return fields;
+}
+
+function sanitizeLightweightProvenance(target, source = {}) {
+  for (const key of ["agentRunId", "parentVersionId", "jobId"]) {
+    if (typeof source[key] === "string" && source[key].trim()) {
+      target[key] = sanitizeString(source[key], "", 300);
+    } else {
+      delete target[key];
+    }
+  }
+  if (typeof source.batchId === "string" && source.batchId.trim()) {
+    target.batchId = sanitizeString(source.batchId, "", 300);
+  } else if (source.batchId === null) {
+    target.batchId = null;
+  } else {
+    delete target.batchId;
+  }
+  const sourceObjectIds = sanitizeSourceObjectIds(source.sourceObjectIds);
+  if (sourceObjectIds.length > 0) target.sourceObjectIds = sourceObjectIds;
+  else delete target.sourceObjectIds;
+  return target;
+}
+
+function sanitizeSourceObjectIds(value) {
+  if (!Array.isArray(value)) return [];
+  const ids = value
+    .filter((item) => typeof item === "string" && item.trim())
+    .map((item) => sanitizeString(item, "", 300));
+  return [...new Set(ids)].slice(0, 3);
 }
 
 function sanitizeCrop(crop) {

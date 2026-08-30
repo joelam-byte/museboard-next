@@ -170,8 +170,18 @@ async function produceValidatedCandidate({ analyze, repair, context }) {
   try {
     validateAgentBriefCandidate(candidate);
   } catch (validationError) {
-    if (!(validationError instanceof AgentRunValidationError) || typeof repair !== "function") throw validationError;
-    candidate = await repair({ candidate, validationError, context });
+    if (!(validationError instanceof AgentRunValidationError)) throw validationError;
+    candidate = typeof repair === "function"
+      ? await repair({ candidate, validationError, context })
+      : await analyze(context, {
+        mode: "schema-repair",
+        candidate,
+        validationError: {
+          code: validationError.code,
+          message: validationError.message,
+          path: validationError.path
+        }
+      });
     try {
       validateAgentBriefCandidate(candidate);
     } catch (repairError) {

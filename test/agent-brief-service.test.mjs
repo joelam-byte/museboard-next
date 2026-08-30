@@ -205,6 +205,39 @@ test("an invalid recommended Skill is accepted only after exactly one schema rep
   assert.equal(run.status, "ready");
 });
 
+test("the injected analyzer performs exactly one structured schema repair when no repair override is provided", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-repair-default-"));
+  const canvasId = "canvas-repair-default";
+  const source = await addImage(projectDir, {
+    dataUrl: `data:image/png;base64,${pngOne}`,
+    name: "source.png",
+    allowDuplicate: true
+  }, { canvasId });
+  const invocations = [];
+
+  const run = await analyzeAgentRun(projectDir, {
+    id: "run-repair-default",
+    canvasId,
+    sourceObjectIds: [source.id],
+    rawRequest: "Use the supported routing contract for this background edit."
+  }, {
+    analyze: async (context, invocation = { mode: "analyze" }) => {
+      invocations.push(invocation);
+      if (invocation.mode === "schema-repair") {
+        assert.equal(context.request.agentRunId, "run-repair-default");
+        assert.equal(invocation.candidate.recommendedSkillId, "not-supported");
+        assert.equal(invocation.validationError.code, "agent-run-validation");
+        return validCandidate({ recommendedSkillId: "remove-bg" });
+      }
+      return validCandidate({ recommendedSkillId: "not-supported" });
+    }
+  });
+
+  assert.deepEqual(invocations.map((invocation) => invocation.mode), ["analyze", "schema-repair"]);
+  assert.equal(run.recommendedSkillId, "remove-bg");
+  assert.equal(run.status, "ready");
+});
+
 test("a second schema failure throws clearly and leaves the persisted run ungenerated", async () => {
   const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-repair-failure-"));
   const canvasId = "canvas-repair-failure";

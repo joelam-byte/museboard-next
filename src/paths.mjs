@@ -70,7 +70,12 @@ export function safePathSegment(value) {
 function storagePathSegment(value) {
   const raw = String(value || "default");
   const safe = safePathSegment(raw);
-  if (safe === raw && raw.length <= maxSafePathSegmentLength && isCrossPlatformStorageSegment(raw)) return safe;
+  if (
+    safe === raw
+    && raw.length <= maxSafePathSegmentLength
+    && raw === raw.toLowerCase()
+    && isCrossPlatformStorageSegment(raw)
+  ) return safe;
 
   const hash = crypto.createHash("sha256").update(raw).digest("base64url").slice(0, 12);
   const readableLength = maxSafePathSegmentLength - hash.length - 1;

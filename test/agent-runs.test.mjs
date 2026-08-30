@@ -291,6 +291,38 @@ test("AgentRun storage hashes Windows-reserved and normalized canvas and run ids
   }
 });
 
+test("AgentRun storage keeps case-only canvas ids in separate files", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-run-canvas-case-"));
+  const runs = [
+    initialRun({ canvasId: "Canvas", id: "shared-run", rawRequest: "Uppercase canvas" }),
+    initialRun({ canvasId: "canvas", id: "shared-run", rawRequest: "Lowercase canvas" })
+  ];
+  const paths = runs.map((run) => agentRunPathFor(projectDir, run.canvasId, run.id));
+
+  assert.equal(new Set(paths.map((filePath) => filePath.toLowerCase())).size, 2);
+  await Promise.all(runs.map((run) => writeAgentRun(projectDir, run)));
+  for (const run of runs) {
+    const restored = await readAgentRun(projectDir, { canvasId: run.canvasId, agentRunId: run.id });
+    assert.equal(restored.rawRequest, run.rawRequest);
+  }
+});
+
+test("AgentRun storage keeps case-only run ids in separate files", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-run-id-case-"));
+  const runs = [
+    initialRun({ canvasId: "canvas-case", id: "Run", rawRequest: "Uppercase run" }),
+    initialRun({ canvasId: "canvas-case", id: "run", rawRequest: "Lowercase run" })
+  ];
+  const paths = runs.map((run) => agentRunPathFor(projectDir, run.canvasId, run.id));
+
+  assert.equal(new Set(paths.map((filePath) => filePath.toLowerCase())).size, 2);
+  await Promise.all(runs.map((run) => writeAgentRun(projectDir, run)));
+  for (const run of runs) {
+    const restored = await readAgentRun(projectDir, { canvasId: run.canvasId, agentRunId: run.id });
+    assert.equal(restored.rawRequest, run.rawRequest);
+  }
+});
+
 test("atomic writes never expose partial JSON and leave no temporary files", async () => {
   const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "museboard-agent-run-atomic-"));
   const run = initialRun();

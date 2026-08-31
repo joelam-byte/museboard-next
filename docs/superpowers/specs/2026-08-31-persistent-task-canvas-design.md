@@ -1,20 +1,57 @@
-# Museboard Persistent Task Canvas Design
+# Museboard 单任务长期画布设计
 
-Date: 2026-08-31  
-Status: Approved in conversation
+日期：2026-08-31
+状态：已在对话中确认
 
-## Goal
+## 1. 目标
 
-Make Museboard a persistent visual workspace for a single Codex task. Each task can opt into exactly one canvas. The canvas retains its layout, generated images, History, Assets, and AgentRuns across closing and reopening. This change also adds first-class text-to-image generation, reliable chat-to-canvas collection, Chinese Skill labels, and removes the broken duplicate send-to-chat control.
+Museboard 为每个 Codex 任务提供一张可长期保存的主画布。
 
-## Product Rules
+- 一个任务最多对应一张 Museboard 画布。
+- 与设计无关的任务不会自动创建或打开画布。
+- 用户第一次在任务中调用 `@Museboard` 时，系统创建并绑定主画布。
+- 以后重新打开同一任务时，恢复这张画布及其原有状态。
+- 如果用户只关闭了浏览器中的画布页签，可以再次调用 `@Museboard` 重新打开，不创建新画布。
 
-- A Codex task has zero or one Museboard canvas.
-- A canvas is created only after the task first invokes Museboard.
-- The task thread id maps deterministically to one canvas id.
-- Returning to the task restores the same canvas. If the in-app browser tab was closed, invoking `@Museboard` reopens the existing canvas.
-- Museboard does not offer multiple canvases within one task.
-- Canvas files live under the task workspace, never under a temporary demo directory:
+这次调整还要补齐三个直接影响使用体验的能力：
+
+1. 不选图片也能通过自然语言直接生成新图片。
+2. 在当前任务对话中生成的图片，可以自动进入该任务的 Museboard 画布。
+3. 删除当前失效且容易误解的“发送到对话”按钮，只保留可靠的图片引用复制功能。
+
+## 2. 任务与画布的绑定关系
+
+### 2.1 唯一绑定
+
+画布身份由当前 Codex 任务决定，而不是由临时浏览器地址或一次本地服务进程决定。
+
+绑定关系为：
+
+```text
+Codex task/threadId
+        ↓
+Museboard canvasId
+        ↓
+<workspace>/canvas/threads/<canvasId>/
+```
+
+同一个 `threadId` 始终解析到同一个 `canvasId`。V1 不提供“一个任务创建多张画布”的入口，也不使用临时画布概念。
+
+### 2.2 打开规则
+
+- 任务从未启用 Museboard：不打开画布，也不创建画布目录。
+- 用户首次调用 `@Museboard`：创建绑定记录和持久画布，并打开主画布。
+- 已绑定的任务重新打开：恢复该任务的主画布。
+- 画布页签被手动关闭：再次调用 `@Museboard` 即可重新打开同一张画布。
+- 切换到另一个已绑定任务：打开那个任务自己的主画布，不沿用上一任务的画布。
+
+如果宿主目前无法可靠地在任务切换时主动通知插件，V1 至少保证通过该任务中的 `@Museboard` 能准确恢复主画布；后续再接入宿主提供的自动重开能力。
+
+## 3. 持久化存储
+
+### 3.1 正式数据目录
+
+每张画布的数据保存在当前工作区中：
 
 ```text
 <workspace>/canvas/threads/<canvasId>/
@@ -25,54 +62,117 @@ Make Museboard a persistent visual workspace for a single Codex task. Each task 
 └─ runs/
 ```
 
-- The current test canvas for thread `01a048aa-e74e-7c80-9ceb-4b842e371f72` becomes that task's persistent canvas under `E:\codexwork\museboard\canvas\threads\<canvasId>\`.
-- The source temporary canvas is retained as a backup until the migrated canvas is manually verified.
-- The workspace already ignores `/canvas/` in Git, so generated assets remain local and are not accidentally committed.
+- `codex-canvas.json`：画布对象、位置、缩放和视口状态。
+- `assets.json`：上传图、生成图、编辑图等资产索引。
+- `assets/`：实际图片文件。
+- `jobs/`：图片生成和编辑任务数据。
+- `runs/`：AgentRun、Structured Brief、澄清、确认和运行结果。
 
-## Canvas Lifecycle and Migration
+仓库现有 `.gitignore` 已忽略 `/canvas/`，因此这些个人工作资产不会被上传到 GitHub。
 
-Opening Museboard resolves the active workspace and thread id, derives the stable canvas id, and opens or creates the matching store. It must not create stores for unrelated tasks.
+### 3.2 当前测试画布迁移
 
-The current test-canvas migration copies the complete thread canvas directory, including state, assets, jobs, runs, and indexes. Migration must not overwrite an existing non-empty destination. After copying, Museboard verifies that the state JSON can be read, referenced asset files exist, and the expected object and asset counts match. The temporary source is not deleted automatically.
+当前测试画布位于临时目录：
 
-The persistent project registry and runtime metadata are updated to point at the workspace canvas. The URL may receive a new project id, but the thread id and logical canvas remain unchanged.
+```text
+C:\Users\ljhmo\AppData\Local\Temp\museboard-local-e2e-demo\canvas\threads\01a048aa-e74e-7c80-9ceb-4b842e371f72
+```
 
-## Agent Modes and Text-to-Image
+它需要迁移到：
 
-The Agent panel exposes an explicit mode so image relationships are never implicit:
+```text
+E:\codexwork\museboard\canvas\threads\<canvasId>\
+```
 
-- `New image`: no source images are sent to analysis or ImageGen.
-- `Edit / use reference`: one to three selected canvas images are sent as sources.
-- When images are selected, the user can choose `Ignore selected images` to run a clean text-to-image request without changing the canvas selection.
+迁移规则：
 
-Add stable Skill id `generate-image` with Chinese display name `文生图`. It accepts zero source images and produces one image after explicit confirmation. Existing edit Skills retain their current source-image requirements and behavior.
+- 只在目标画布不存在或目标为空时执行自动迁移。
+- 如果目标目录已经存在且内容不同，不覆盖，停止并显示清楚的冲突信息。
+- 迁移完成后先保留原临时目录，待用户确认新画布能正常打开后再手工处理旧副本。
+- 迁移不能改变原有图片、History、Assets、对象位置和视口状态。
 
-`AgentRun.sourceObjectIds` becomes an array that may be empty. Zero-source runs may only select Skills compatible with zero sources. The analyzer receives an empty source list and may recommend `generate-image`; it must not recommend Quick Edit or another source-dependent Skill.
+## 4. Agent 的两种工作模式
 
-Confirming a `generate-image` run starts a dedicated backend generation action with no image attachments. The result is stored with generation provenance, no `sourceObjectId`, and is placed near the current visible canvas area. It appears in the canvas, History, and Assets.
+Agent 面板明确区分两种用途，避免“选中了图片，但其实只想重新生图”的歧义。
 
-## Chat-to-Canvas Collection
+### 4.1 新建图片
 
-When a task has opened its persistent Museboard canvas, automatic collection is enabled for that task's generated-image directory. A new image generated from the Codex conversation is imported into the same task canvas and Assets as a chat-generated asset.
+新增稳定 Skill ID：
 
-Collection is scoped to the bound thread id, deduplicates already imported paths, and excludes outputs already handled by Museboard jobs. Tasks that never enabled Museboard do not start collection. The current demo's `autoCollect: false` setting is not carried into the persistent canvas.
+```text
+generate-image
+```
 
-The acceptance flow includes one real conversation-generated image to verify that it appears automatically in the open canvas.
+中文显示名称：`文生图`
 
-## Chat Toolbar
+行为：
 
-The automatic `send-to-chat` airplane button is removed. It currently starts another Codex app-server writer for the active task and fails with an active-writer conflict.
+- 允许不选择任何画布对象。
+- 用户直接输入提示词后可以运行需求分析、查看 Structured Brief、补充必要澄清并确认生成。
+- `AgentRun.sourceObjectIds` 可以为空数组。
+- 零来源 AgentRun 只能使用支持零来源的 Skill，V1 主要是 `generate-image`。
+- 生成结果没有来源图片 ID，但必须记录所属 AgentRun、job、batch 和输出规格。
+- 图片生成后放到当前视口附近，并同时出现在画布、History 和 Assets 中。
 
-The existing `@file` button remains as the single chat handoff control. Its Chinese label is `复制到对话`. It copies the selected local image as an `@<absolute-path>` reference and shows `已复制图片引用，请回到对话粘贴。`
+如果当前已经选中图片，但用户选择“新建图片”，界面提供“忽略选中图片”，确保这些图片不会作为参考输入。
 
-The frontend no longer calls `/api/chat-turn`. Unsupported automatic chat writing is not exposed in the UI. Server errors that remain user-actionable should return their real message instead of only `Internal server error`.
+### 4.2 编辑或参考生成
 
-## Chinese Skill Display
+行为：
 
-Localization changes only the display layer. Stable Skill ids, backend actions, Skill files, and server-owned prompts remain unchanged.
+- 使用一至三张选中图片作为来源。
+- 继续支持快速编辑、扩图、移除背景、编辑文字、编辑元素以及业务 Skill。
+- Structured Brief 必须记录修改项、保留项、参考关系和输出要求。
+- 如果选择了必须依赖图片的 Skill，但没有来源图片，确认前就显示明确提示，不调用 ImageGen。
 
-| Stable id | Chinese display name |
-|---|---|
+## 5. 对话生成图片自动进入画布
+
+当前测试服务的自动收集开关是关闭的：
+
+```text
+autoCollect: false
+```
+
+长期画布启用后，该任务的持久画布应使用 `autoCollect: true`，并只监听当前绑定任务自己的生成图片目录。
+
+自动收集规则：
+
+- 只收集当前 `threadId` 对话产生的图片。
+- 同一文件只导入一次。
+- Museboard 自己的 job 输出不再次作为“对话生成图片”重复导入。
+- 文件导入后，同时显示在画布和 Assets 中，来源标记为“对话生成”。
+- 新图片放置在当前视口附近，不覆盖已有对象。
+- 自动收集失败不能删除原图片，也不能破坏画布；界面应提供可理解的错误信息和手工重新导入方式。
+
+实现完成后必须进行一次真实闭环验证：在绑定任务的对话中生成一张图片，确认它自动出现在同一任务的画布和 Assets 中。
+
+## 6. “发送到对话”功能调整
+
+当前小飞机按钮调用 `/api/chat-turn`，实际会出现 `Internal Server Error`；同时它与现有的 `@文件` 复制能力目的重复。
+
+V1 调整为：
+
+- 删除小飞机“发送到对话”按钮。
+- 保留现有图片引用复制按钮。
+- 中文名称改为“复制到对话”。
+- 点击后复制：
+
+```text
+@<图片绝对路径>
+```
+
+- 成功提示：`已复制图片引用，请回到对话粘贴。`
+- 复制失败时显示真实、可操作的原因，不显示笼统的 `Internal Server Error`。
+- 前端不再调用 `/api/chat-turn`。
+
+V1 不自动替用户把消息写入当前对话。原因是宿主对话可能已有正在写入的 Agent，自动写入容易产生 active-writer 冲突，而且目前没有稳定的跨 Windows/macOS 官方接口。待 Codex 提供可靠宿主集成后再评估自动发送。
+
+## 7. Skill 中文显示
+
+只翻译用户界面中的名称、说明、Brief 字段和状态文字，不改变内部 Skill ID、Skill 内容、后端动作或提示词规则。
+
+| 稳定 Skill ID | 中文显示名称 |
+| --- | --- |
 | `generate-image` | 文生图 |
 | `quick-edit` | 快速编辑 |
 | `expand` | 扩图 |
@@ -82,31 +182,52 @@ Localization changes only the display layer. Stable Skill ids, backend actions, 
 | `xiaohongshu-cover` | 小红书封面 |
 | `product-marketing-set` | 产品营销组图 |
 
-Skill names, descriptions, brief-field labels, status messages, and History labels use the active UI language. English mode continues to show English labels.
+中文模式下需要同步本地化：
 
-## Error Handling
+- Skill 名称和简介；
+- Structured Brief 字段名称；
+- 澄清问题和确认按钮；
+- AgentRun 状态；
+- History 和 Assets 中的类型、来源和操作名称。
 
-- A missing or invalid thread id prevents task-canvas creation and shows a clear binding error.
-- Migration stops without overwriting when a destination already contains different canvas data.
-- A zero-source run selecting a source-dependent Skill fails validation before generation.
-- Automatic collection failures are logged without deleting generated files or existing canvas assets.
-- Clipboard failure shows a direct copy-failed message and does not call the retired chat-turn route.
+英文模式继续使用英文显示，内部数据始终保存稳定 ID，避免切换语言后无法识别历史记录。
 
-## Verification
+## 8. 错误处理
 
-Verification stays proportional to the behavior changed:
+- 无法识别或绑定 `threadId`：停止创建画布，显示“无法绑定当前任务”，不创建临时替代画布。
+- 迁移目标已有不同内容：停止自动迁移，保留两份数据并说明冲突位置。
+- 零来源运行选择了编辑型 Skill：确认前阻止运行，提示需要选择图片或切换到“文生图”。
+- 自动收集失败：保留原文件和已有资产，不回滚或删除成功内容。
+- 剪贴板失败：明确提示复制失败，并显示可手工复制的绝对路径。
+- 重复确认：沿用 AgentRun 的幂等规则，不重复创建 jobs。
 
-1. Targeted storage test for deterministic task-canvas reopening and safe migration.
-2. Targeted AgentRun and API tests for zero-source analysis, confirmation idempotency, and a `generate-image` job.
-3. Targeted collection test for thread scoping, deduplication, and Museboard-job exclusion.
-4. UI check for explicit generation mode, Chinese Skill labels, removal of the airplane control, and the retained copy-to-chat action.
-5. One real conversation-generation smoke test with automatic canvas import.
-6. One full test-suite run before the implementation commit.
+## 9. 验证范围
 
-## Non-Goals
+本次实现只做与核心行为直接相关的验证，避免为文案和说明文件增加无意义测试。
 
-- Multiple canvases per Codex task.
-- A project-wide canvas shared by unrelated tasks.
-- tldraw, React Flow, nodes, edges, DAG workflows, SQLite, or a separate login/API key.
-- OS-specific UI automation or simulated input into Codex.
-- Recreating automatic send-to-chat before Codex exposes a stable supported host integration.
+1. 持久化与迁移：同一任务重复打开恢复同一画布；临时测试画布迁移后内容不丢失。
+2. 零来源 AgentRun：不选图也能分析、确认并通过 `generate-image` 生成图片。
+3. Skill 约束：零来源不能误用编辑型 Skill；有来源的原有编辑能力不退化。
+4. 自动收集：只收集绑定任务图片、正确去重、排除 Museboard 自身 job 输出。
+5. 界面检查：两种 Agent 模式清楚、Skill 中文名称正确、小飞机按钮已删除、复制提示可理解。
+6. 真实闭环：在对话中生成图片后，自动进入该任务的画布和 Assets。
+7. 在最终本地提交前运行一次完整测试集；文档翻译本身不单独增加测试。
+
+## 10. 本次不做的内容
+
+- 一个任务多张画布。
+- 多个无关任务共用一张项目画布。
+- tldraw、React Flow、节点、连线或任意 DAG。
+- SQLite 或独立云端资产库。
+- 独立 OpenAI 登录、OAuth 或 API Key。
+- AppleScript、Windows UI Automation、坐标点击或模拟键盘等系统专用自动化。
+- 在没有稳定宿主接口前自动向当前对话发送消息。
+
+## 11. 推荐实施顺序
+
+1. 先完成任务绑定、正式存储目录和当前测试画布迁移。
+2. 增加 `generate-image`，放开零来源 AgentRun，并在 Agent 面板加入“新建图片 / 编辑或参考生成”。
+3. 启用绑定任务的对话图片自动收集，并完成去重与来源标记。
+4. 删除小飞机按钮，把 `@文件` 功能改成中文“复制到对话”。
+5. 完成 Skill、Structured Brief、History 和 Assets 的中文显示。
+6. 做一次界面检查、一次真实对话生图闭环和一次完整测试，然后进行本地提交。

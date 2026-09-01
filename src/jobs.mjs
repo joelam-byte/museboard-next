@@ -7,15 +7,22 @@ import { promisify } from "node:util";
 import { PNG } from "pngjs";
 import { collectRecentImages } from "./collector.mjs";
 import { jobsDirFor, pluginRoot } from "./paths.mjs";
-import { addJobPlaceholder, deleteObject, readState, transformState, updateObject } from "./store.mjs";
+import { addGenerationJobPlaceholder, addJobPlaceholder, deleteObject, readState, transformState, updateObject } from "./store.mjs";
 import { startCodexImageJob, stopCodexProcess } from "./codex-runner.mjs";
 import { recognizeTextLocal } from "./local-ocr.mjs";
 import { createOperationLease } from "./operation-leases.mjs";
+import {
+  prepareAgentRunForJob,
+  prepareAgentRunForGenerationJob,
+  recordAgentRunJobFailure,
+  recordAgentRunJobSuccess
+} from "./agent-run-execution.mjs";
 
 const execFileAsync = promisify(execFile);
 const jobs = new Map();
 const textRecognitionJobs = new Map();
 const supportedActions = new Set(["remove-bg", "quick-edit", "expand", "edit-elements"]);
+const businessImageActions = new Set(["xiaohongshu-cover", "product-marketing-set"]);
 const ignoredGeneratedImagePaths = new Map();
 const globalIgnoredGeneratedImageScope = "__global__";
 const outputPollMs = 1000;
@@ -35,6 +42,10 @@ const quickEditAnnotationPromptSuffix = [
 function normalizeCanvasId(value) {
   const canvasId = typeof value === "string" ? value.trim() : "";
   return canvasId || null;
+}
+
+function agentRunCanvasIdForJob(canvasId) {
+  return normalizeCanvasId(canvasId) || "shared";
 }
 
 export async function createImageJob(projectDir, input, options = {}) {
@@ -114,6 +125,16 @@ export async function createImageJob(projectDir, input, options = {}) {
     backgroundCompletionPromise: null,
     error: null
   };
+  const agentRun = await prepareAgentRunForJob(projectDir, {
+    canvasId: agentRunCanvasIdForJob(canvasId),
+    agentRunId: input.agentRunId || null,
+    jobId: job.id,
+    action,
+    sourceObject: object,
+    prompt: job.prompt
+  });
+  job.agentRunId = agentRun.id;
+  job.agentRunCanvasId = agentRun.canvasId;
   const operationLease = await createOperationLease("image-job", { action, projectDir, canvasId });
   let placeholder;
   try {
@@ -123,10 +144,14 @@ export async function createImageJob(projectDir, input, options = {}) {
       status: "running",
       name: actionLabel(action),
       sourceObjectId: object.id,
+      sourceObjectIds: [object.id],
+      agentRunId: job.agentRunId,
+      jobId: job.id,
       width: expandOptions?.targetWidth || object.width,
       height: expandOptions?.targetHeight || object.height
     }, storeOptions);
   } catch (error) {
+    await recordAgentRunFailureBestEffort(projectDir, job, error);
     await operationLease.release();
     throw error;
   }
@@ -144,6 +169,200 @@ export async function createImageJob(projectDir, input, options = {}) {
   return publicJob(job);
 }
 
+export async function createGenerationJob(projectDir, input, options = {}) {
+  const canvasId = normalizeCanvasId(options.canvasId);
+  const storeOptions = { canvasId };
+  const action = String(input?.action || "");
+  const prompt = typeof input?.prompt === "string" ? input.prompt.trim().slice(0, 4000) : "";
+  if (action !== "generate-image") {
+    const error = new Error(`Unsupported generated image action: ${action || "(missing)"}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!prompt) {
+    const error = new Error("Generate Image requires a confirmed prompt.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const output = input?.output || {};
+  const id = `job_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+  const jobDir = path.join(jobsDirFor(projectDir, canvasId), id);
+  const startedAtMs = Date.now();
+  const job = {
+    id,
+    action,
+    projectDir,
+    canvasId,
+    status: "queued",
+    objectId: null,
+    sourceObjectId: null,
+    sourceObjectIds: [],
+    sourceImagePath: null,
+    imagePath: null,
+    expandOptions: null,
+    expandInputPath: null,
+    transparentLayerMode: false,
+    quickEditAnnotations: null,
+    annotationSessionId: null,
+    annotatedImagePath: null,
+    annotationManifestPath: null,
+    prompt,
+    outputDir: path.join(jobDir, "outputs"),
+    logPath: path.join(jobDir, "codex.log"),
+    textInventoryPath: null,
+    createdAt: new Date(startedAtMs).toISOString(),
+    startedAt: null,
+    completedAt: null,
+    durationMs: null,
+    outputDetectedAt: null,
+    detectedOutputPath: null,
+    codexSessionId: null,
+    imported: [],
+    placeholder: null,
+    placeholderId: null,
+    backgroundCompletionRunning: false,
+    backgroundCompletionPromise: null,
+    error: null
+  };
+  const agentRun = await prepareAgentRunForGenerationJob(projectDir, {
+    canvasId: agentRunCanvasIdForJob(canvasId),
+    agentRunId: input.agentRunId,
+    jobId: job.id,
+    action
+  });
+  job.agentRunId = agentRun.id;
+  job.agentRunCanvasId = agentRun.canvasId;
+  const operationLease = await createOperationLease("image-job", { action, projectDir, canvasId });
+  try {
+    const placeholder = await addGenerationJobPlaceholder(projectDir, {
+      id: `${id}_placeholder`,
+      action,
+      status: "running",
+      name: actionLabel(action),
+      agentRunId: job.agentRunId,
+      jobId: job.id,
+      width: generationDisplayDimension(output.width, output.height, "width"),
+      height: generationDisplayDimension(output.width, output.height, "height")
+    }, storeOptions);
+    job.placeholder = placeholder;
+    job.placeholderId = placeholder.id;
+  } catch (error) {
+    await recordAgentRunFailureBestEffort(projectDir, job, error);
+    await operationLease.release();
+    throw error;
+  }
+  jobs.set(id, job);
+  runJob(projectDir, job, startedAtMs)
+    .catch((error) => markFailed(projectDir, job, error).catch(() => {}))
+    .finally(async () => {
+      await job.backgroundCompletionPromise?.catch(() => {});
+      await operationLease.release();
+    });
+  return publicJob(job);
+}
+
+export async function createBusinessImageJob(projectDir, input, options = {}) {
+  const canvasId = normalizeCanvasId(options.canvasId);
+  const storeOptions = { canvasId };
+  const action = String(input?.action || "");
+  if (!businessImageActions.has(action)) {
+    const error = new Error(`Unsupported business image action: ${action || "(missing)"}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  const sourceObjectIds = normalizeBusinessSourceObjectIds(input?.sourceObjectIds);
+  const output = normalizeBusinessOutput(input?.output);
+  const id = normalizeBusinessJobId(input?.id);
+  const prompt = normalizeBusinessPrompt(input?.prompt);
+  const agentRunId = normalizeBusinessJobId(input?.agentRunId, "AgentRun id");
+
+  const objects = await Promise.all(sourceObjectIds.map((objectId) => requireImageObject(projectDir, objectId, storeOptions)));
+  const imagePaths = objects.map((object) => object.assetPath || object.sourcePath);
+  if (imagePaths.some((imagePath) => !imagePath)) {
+    const error = new Error("Every business Skill source image must be a local canvas asset.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const source = objects[0];
+  const jobDir = path.join(jobsDirFor(projectDir, canvasId), id);
+  const outputDir = path.join(jobDir, "outputs");
+  const logPath = path.join(jobDir, "codex.log");
+  const startedAtMs = Date.now();
+  const job = {
+    id,
+    action,
+    outputId: output.id,
+    output,
+    projectDir,
+    canvasId,
+    status: "queued",
+    objectId: source.id,
+    sourceObjectId: source.id,
+    sourceObjectIds,
+    sourceImagePath: imagePaths[0],
+    imagePath: imagePaths,
+    expandOptions: null,
+    expandInputPath: null,
+    transparentLayerMode: false,
+    quickEditAnnotations: null,
+    annotationSessionId: null,
+    annotatedImagePath: null,
+    annotationManifestPath: null,
+    prompt,
+    outputDir,
+    logPath,
+    textInventoryPath: null,
+    createdAt: new Date(startedAtMs).toISOString(),
+    startedAt: null,
+    completedAt: null,
+    durationMs: null,
+    outputDetectedAt: null,
+    detectedOutputPath: null,
+    codexSessionId: null,
+    imported: [],
+    placeholder: null,
+    placeholderId: null,
+    backgroundCompletionRunning: false,
+    backgroundCompletionPromise: null,
+    error: null,
+    agentRunId,
+    agentRunCanvasId: agentRunCanvasIdForJob(canvasId)
+  };
+  const operationLease = await createOperationLease("image-job", { action, projectDir, canvasId });
+  let placeholder;
+  try {
+    const dimensions = businessPlaceholderDimensions(source, output);
+    placeholder = await addJobPlaceholder(projectDir, {
+      id: `${id}_placeholder`,
+      action,
+      status: "running",
+      name: `${actionLabel(action)} · ${output.label}`,
+      sourceObjectId: source.id,
+      sourceObjectIds,
+      agentRunId: job.agentRunId,
+      jobId: job.id,
+      width: dimensions.width,
+      height: dimensions.height
+    }, storeOptions);
+  } catch (error) {
+    await recordAgentRunFailureBestEffort(projectDir, job, error);
+    await operationLease.release();
+    throw error;
+  }
+  job.placeholder = placeholder;
+  job.placeholderId = placeholder.id;
+  jobs.set(id, job);
+
+  runJob(projectDir, job, startedAtMs)
+    .catch((error) => markFailed(projectDir, job, error).catch(() => {}))
+    .finally(async () => {
+      await job.backgroundCompletionPromise?.catch(() => {});
+      await operationLease.release();
+    });
+
+  return publicJob(job);
+}
 export async function createTextRecognitionJob(projectDir, input, options = {}) {
   const canvasId = normalizeCanvasId(options.canvasId);
   const storeOptions = { canvasId };
@@ -285,6 +504,25 @@ export async function submitTextRecognitionEdit(projectDir, id, input = {}, opti
     items: job.items,
     submittedAt: new Date().toISOString()
   };
+  const agentRun = await prepareAgentRunForJob(projectDir, {
+    canvasId: agentRunCanvasIdForJob(job.canvasId || options.canvasId),
+    agentRunId: input.agentRunId || null,
+    jobId: job.id,
+    action: "edit-text",
+    sourceObject: object,
+    prompt: plan.prompt
+  });
+  job.agentRunId = agentRun.id;
+  job.agentRunCanvasId = agentRun.canvasId;
+  try {
+    job.placeholder = await updateObject(projectDir, job.placeholderId, {
+      agentRunId: job.agentRunId,
+      sourceObjectIds: sourceObjectIdsForJob(job),
+      jobId: job.id
+    }, storeOptions);
+  } catch {
+    // The user may remove the recognition placeholder before confirming its edit.
+  }
   await fs.writeFile(job.editPlanPath, `${JSON.stringify(plan, null, 2)}\n`);
   job.stage = "generating";
   job.prompt = plan.prompt;
@@ -1117,6 +1355,10 @@ async function collectAndPlaceResult(projectDir, job, startedAtMs, { final, dete
     prompt: jobPrompt(job),
     imagegenPrompt: job.imagegenPrompt || "",
     sourceObjectId: job.sourceObjectId,
+    sourceObjectIds: sourceObjectIdsForJob(job),
+    agentRunId: job.agentRunId || null,
+    jobId: job.id,
+    assetKind: assetKindForJob(job),
     annotationSessionId: job.annotationSessionId || null,
     canvasId: job.canvasId
   });
@@ -1130,6 +1372,10 @@ async function collectAndPlaceResult(projectDir, job, startedAtMs, { final, dete
       prompt: jobPrompt(job),
       imagegenPrompt: job.imagegenPrompt || "",
       sourceObjectId: job.sourceObjectId,
+      sourceObjectIds: sourceObjectIdsForJob(job),
+      agentRunId: job.agentRunId || null,
+      jobId: job.id,
+      assetKind: assetKindForJob(job),
       canvasId: job.canvasId
     });
   }
@@ -1146,6 +1392,7 @@ async function collectAndPlaceResult(projectDir, job, startedAtMs, { final, dete
       job.error = "Codex finished, but no generated image was found to collect.";
       await appendJobLog(job, `No image collected after ${formatDuration(job.durationMs)}.`);
       await updatePlaceholder(projectDir, job, "failed");
+      await recordAgentRunFailureBestEffort(projectDir, job, job.error);
     }
     return false;
   }
@@ -1156,6 +1403,7 @@ async function collectAndPlaceResult(projectDir, job, startedAtMs, { final, dete
   job.completedAt = new Date().toISOString();
   job.durationMs = Date.now() - startedAtMs;
   await placeImportedAtPlaceholder(projectDir, job);
+  await recordAgentRunSuccessBestEffort(projectDir, job);
   await appendJobLog(job, `Collected ${result.imported.length} image(s) after ${formatDuration(job.durationMs)}.`);
   return true;
 }
@@ -1565,6 +1813,7 @@ async function markFailed(projectDir, job, error) {
   job.error = error?.message || String(error);
   await appendJobLog(job, `Job failed after ${formatDuration(job.durationMs)}: ${job.error}`);
   await updatePlaceholder(projectDir, job, "failed");
+  await recordAgentRunFailureBestEffort(projectDir, job, error);
 }
 
 async function markTextRecognitionFailed(job, error) {
@@ -1575,6 +1824,35 @@ async function markTextRecognitionFailed(job, error) {
   await appendJobLog(job, `Text recognition failed after ${formatDuration(job.durationMs)}: ${job.error}`);
   if (job.projectDir) {
     await updatePlaceholder(job.projectDir, job, "failed");
+    await recordAgentRunFailureBestEffort(job.projectDir, job, error);
+  }
+}
+
+async function recordAgentRunSuccessBestEffort(projectDir, job) {
+  if (!job.agentRunId || !job.agentRunCanvasId) return;
+  try {
+    await recordAgentRunJobSuccess(projectDir, {
+      canvasId: job.agentRunCanvasId,
+      agentRunId: job.agentRunId,
+      jobId: job.id,
+      outputObjectIds: job.imported.map((object) => object.id)
+    });
+  } catch (error) {
+    await appendJobLog(job, `AgentRun success record skipped: ${error.message || String(error)}`);
+  }
+}
+
+async function recordAgentRunFailureBestEffort(projectDir, job, error) {
+  if (!job.agentRunId || !job.agentRunCanvasId) return;
+  try {
+    await recordAgentRunJobFailure(projectDir, {
+      canvasId: job.agentRunCanvasId,
+      agentRunId: job.agentRunId,
+      jobId: job.id,
+      error
+    });
+  } catch (recordError) {
+    await appendJobLog(job, `AgentRun failure record skipped: ${recordError.message || String(recordError)}`);
   }
 }
 
@@ -1582,9 +1860,12 @@ function publicJob(job) {
   return {
     id: job.id,
     action: job.action,
+    outputId: job.outputId || null,
     status: job.status,
+    agentRunId: job.agentRunId || null,
     objectId: job.objectId,
     sourceObjectId: job.sourceObjectId,
+    sourceObjectIds: sourceObjectIdsForJob(job),
     annotationSessionId: job.annotationSessionId || null,
     createdAt: job.createdAt,
     startedAt: job.startedAt,
@@ -1611,6 +1892,7 @@ function publicTextRecognitionJob(job) {
     action: job.action,
     stage: job.stage,
     status: job.status,
+    agentRunId: job.agentRunId || null,
     objectId: job.objectId,
     sourceObjectId: job.sourceObjectId,
     createdAt: job.createdAt,
@@ -1632,6 +1914,94 @@ function publicTextRecognitionJob(job) {
   };
 }
 
+function normalizeBusinessSourceObjectIds(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 3) {
+    const error = new Error("Business image jobs require one to three source image ids.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const ids = value.map((id) => normalizeBusinessJobId(id, "Source image id"));
+  if (new Set(ids).size !== ids.length) {
+    const error = new Error("Business image jobs require unique source image ids.");
+    error.statusCode = 400;
+    throw error;
+  }
+  return ids;
+}
+
+function normalizeBusinessOutput(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    const error = new Error("Business image jobs require a fixed output recipe.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const id = normalizeBusinessJobId(value.id, "Output id");
+  const label = normalizeBusinessText(value.label, "Output label", 300);
+  const purpose = normalizeBusinessText(value.purpose, "Output purpose", 4000);
+  const format = normalizeBusinessText(value.format, "Output format", 20);
+  if (!["png", "jpeg", "webp"].includes(format)) {
+    const error = new Error("Business output format must be png, jpeg, or webp.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const width = Number(value.width);
+  const height = Number(value.height);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > 16_384 || height > 16_384) {
+    const error = new Error("Business output dimensions must be positive image dimensions.");
+    error.statusCode = 400;
+    throw error;
+  }
+  return {
+    id,
+    label,
+    purpose,
+    format,
+    width,
+    height,
+    aspectRatio: normalizeBusinessText(value.aspectRatio, "Output aspect ratio", 80)
+  };
+}
+
+function normalizeBusinessPrompt(value) {
+  return normalizeBusinessText(value, "Business image prompt", 60_000);
+}
+
+function normalizeBusinessJobId(value, label = "Business job id") {
+  if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,299}$/.test(value.trim())) {
+    const error = new Error(`${label} must be a path-safe id.`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return value.trim();
+}
+
+function normalizeBusinessText(value, label, maximumLength) {
+  if (typeof value !== "string" || !value.trim() || value.trim().length > maximumLength) {
+    const error = new Error(`${label} must be non-empty text up to ${maximumLength} characters.`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return value.trim();
+}
+
+function businessPlaceholderDimensions(source, output) {
+  const sourceWidth = Math.max(1, Math.round(Number(source?.width) || Number(source?.naturalWidth) || 1));
+  const sourceHeight = Math.max(1, Math.round(Number(source?.height) || Number(source?.naturalHeight) || 1));
+  const aspectRatio = output.width / output.height;
+  const sourceArea = sourceWidth * sourceHeight;
+  const height = Math.max(1, Math.round(Math.sqrt(sourceArea / aspectRatio)));
+  return {
+    width: Math.max(1, Math.round(height * aspectRatio)),
+    height
+  };
+}
+
+function sourceObjectIdsForJob(job) {
+  const values = Array.isArray(job?.sourceObjectIds) && job.sourceObjectIds.length > 0
+    ? job.sourceObjectIds
+    : [job?.sourceObjectId];
+  return Array.from(new Set(values.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim())));
+}
 async function requireImageObject(projectDir, objectId, options = {}) {
   const state = await readState(projectDir, options);
   const object = state.objects.find((item) => item.id === objectId);
@@ -1686,13 +2056,26 @@ function buildEditTextPrompt(changes) {
   ].join("\n");
 }
 
+function assetKindForJob(job) {
+  return businessImageActions.has(job?.action) || job?.action === "generate-image" ? "generation" : "edit";
+}
 function actionLabel(action) {
+  if (action === "generate-image") return "Generate Image";
   if (action === "quick-edit") return "Quick Edit";
   if (action === "expand") return "Expand";
   if (action === "edit-text") return "Edit Text";
   if (action === "edit-elements") return "Edit Elements";
   if (action === "remove-bg") return "Remove BG";
+  if (action === "xiaohongshu-cover") return "Xiaohongshu Cover";
+  if (action === "product-marketing-set") return "Product Marketing";
   return "Image job";
+}
+
+function generationDisplayDimension(width, height, axis) {
+  const safeWidth = Number.isFinite(width) && width > 0 ? width : 1024;
+  const safeHeight = Number.isFinite(height) && height > 0 ? height : 1024;
+  const scale = Math.min(1, 420 / Math.max(safeWidth, safeHeight));
+  return Math.max(1, Math.round((axis === "width" ? safeWidth : safeHeight) * scale));
 }
 
 async function updatePlaceholder(projectDir, job, status) {
@@ -1724,6 +2107,8 @@ async function placeImportedAtPlaceholder(projectDir, job) {
     height: job.placeholder.height,
     layoutMode: "canvas-row",
     sourceObjectId: job.sourceObjectId,
+    sourceObjectIds: sourceObjectIdsForJob(job),
+    agentRunId: job.agentRunId || null,
     jobId: job.id,
     ...(job.annotationSessionId ? { annotationSessionId: job.annotationSessionId } : {})
   }, storeOptions);
@@ -1759,6 +2144,9 @@ async function placeImportedElementLayers(projectDir, job) {
     const patch = {
       layoutMode: "canvas-stack",
       sourceObjectId: job.sourceObjectId,
+      sourceObjectIds: sourceObjectIdsForJob(job),
+      agentRunId: job.agentRunId || null,
+      jobId: job.id,
       layerGroupId: groupId,
       layerGroupName: groupName,
       layerGroupSourceObjectId: job.sourceObjectId,

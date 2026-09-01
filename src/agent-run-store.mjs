@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { AgentRunValidationError, validateAgentRun } from "./agent-run-contracts.mjs";
-import { agentRunPathFor } from "./paths.mjs";
+import { agentRunPathFor, agentRunsDirFor } from "./paths.mjs";
 
 const runLocks = new Map();
 const lockTimeoutMs = 15_000;
@@ -33,10 +33,40 @@ export class AgentRunCorruptError extends Error {
   }
 }
 
+export class AgentRunAlreadyExistsError extends Error {
+  constructor({ canvasId, agentRunId, filePath }) {
+    super(`AgentRun ${JSON.stringify(agentRunId)} already exists for canvas ${JSON.stringify(canvasId)} at ${filePath}.`);
+    this.name = "AgentRunAlreadyExistsError";
+    this.code = "agent-run-already-exists";
+    this.statusCode = 409;
+    this.canvasId = canvasId;
+    this.agentRunId = agentRunId;
+    this.filePath = filePath;
+  }
+}
+
 export async function writeAgentRun(projectDir, run) {
   validateAgentRun(run);
   const filePath = agentRunPathFor(projectDir, run.canvasId, run.id);
   return withRunLock(filePath, async () => writeAgentRunFile(filePath, run));
+}
+
+export async function createAgentRunIfAbsent(projectDir, run) {
+  validateAgentRun(run);
+  const filePath = agentRunPathFor(projectDir, run.canvasId, run.id);
+  return withRunLock(filePath, async () => {
+    try {
+      await fs.lstat(filePath);
+    } catch (error) {
+      if (error?.code === "ENOENT") return writeAgentRunFile(filePath, run);
+      throw error;
+    }
+    throw new AgentRunAlreadyExistsError({
+      canvasId: run.canvasId,
+      agentRunId: run.id,
+      filePath
+    });
+  });
 }
 
 export async function readAgentRun(projectDir, { canvasId, agentRunId }) {
@@ -45,6 +75,62 @@ export async function readAgentRun(projectDir, { canvasId, agentRunId }) {
   return readAgentRunFile(filePath, { canvasId, agentRunId });
 }
 
+export async function listAgentRuns(projectDir, { canvasId, limit = 50 } = {}) {
+  assertStorageIdentifier(canvasId, "canvasId");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new AgentRunValidationError("must be an integer from 1 to 100", { path: "limit" });
+  }
+
+  const runsDir = agentRunsDirFor(projectDir, canvasId);
+  let entries;
+  try {
+    entries = await fs.readdir(runsDir, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
+
+  const runs = await Promise.all(entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => readListedAgentRun(path.join(runsDir, entry.name, "run.json"), {
+      canvasId,
+      directoryId: entry.name
+    })));
+
+  return runs
+    .filter(Boolean)
+    .sort((left, right) => {
+      const timestampDifference = Date.parse(right.timestamps.updatedAt) - Date.parse(left.timestamps.updatedAt);
+      return timestampDifference || left.id.localeCompare(right.id);
+    })
+    .slice(0, limit);
+}
+
+async function readListedAgentRun(filePath, { canvasId, directoryId }) {
+  let raw;
+  try {
+    raw = await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+
+  try {
+    const run = JSON.parse(raw);
+    validateAgentRun(run);
+    if (run.canvasId !== canvasId) {
+      throw new AgentRunValidationError("stored canvasId does not match its directory", { path: "AgentRun.canvasId" });
+    }
+    return run;
+  } catch (cause) {
+    throw new AgentRunCorruptError({
+      canvasId,
+      agentRunId: directoryId,
+      filePath,
+      cause
+    });
+  }
+}
 export async function updateAgentRun(projectDir, { canvasId, agentRunId }, updater) {
   assertLocator(canvasId, agentRunId);
   if (typeof updater !== "function") {

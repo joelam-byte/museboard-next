@@ -167,12 +167,6 @@
                 </svg>
                 <span>Edit Text</span>
               </button>
-              <button class="icon-only" data-action="send-to-chat" data-tooltip="Send to chat" title="Send to chat" aria-label="Send to chat">
-                <svg class="context-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M14.536 21.686a.5.5 0 0 0 .937 -.024l6.5 -19a.496 .496 0 0 0 -.635 -.635l-19 6.5a.5 .5 0 0 0 -.024 .937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
-                  <path d="m21.854 2.147 -10.94 10.939" />
-                </svg>
-              </button>
               <button class="icon-only" data-action="copy-file-mention" data-tooltip="Copy @file" title="Copy @file" aria-label="Copy @file">
                 <svg class="context-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <circle cx="12" cy="12" r="4" />
@@ -342,6 +336,56 @@
           <div id="colorPalette" class="color-palette" aria-label="Tool colors" hidden></div>
         </section>
       </main>
+      <aside id="agentWorkbench" class="agent-workbench" aria-label="Museboard Agent workbench">
+        <div class="agent-workbench-tabs" role="tablist" aria-label="Agent workbench tabs">
+          <button type="button" data-agent-tab="agent" role="tab" aria-selected="true" aria-controls="agentPanel" data-i18n="agentTab">Agent</button>
+          <button type="button" data-agent-tab="skill" role="tab" aria-selected="false" aria-controls="skillPanel" data-i18n="skillTab">Skill</button>
+          <button type="button" data-agent-tab="history" role="tab" aria-selected="false" aria-controls="historyPanel" data-i18n="historyTab">History</button>
+          <button type="button" data-agent-tab="assets" role="tab" aria-selected="false" aria-controls="assetsPanel" data-i18n="assetsTab">Assets</button>
+        </div>
+        <section id="agentPanel" class="agent-workbench-panel" role="tabpanel">
+          <div class="agent-workbench-heading">
+            <h2 data-i18n="agentHeading">Image direction</h2>
+            <p id="agentSourceSummary" class="agent-source-summary" data-i18n="agentSourceEmpty">Select one to three images on the canvas.</p>
+          </div>
+          <form id="agentRequestForm" class="agent-request-form">
+            <div class="agent-input-modes" role="radiogroup" aria-label="Image request mode">
+              <button type="button" data-agent-input-mode="new" role="radio" aria-checked="false" data-i18n="agentModeNew">New image</button>
+              <button type="button" data-agent-input-mode="edit" role="radio" aria-checked="true" data-i18n="agentModeEdit">Edit / reference</button>
+            </div>
+            <label for="agentRequest" data-i18n="agentRequestLabel">What would you like to make or change?</label>
+            <textarea id="agentRequest" rows="5" data-i18n-placeholder="agentRequestPlaceholder" placeholder="Describe the outcome, what to preserve, and the output you need."></textarea>
+            <button id="agentAnalyzeButton" type="submit" data-i18n="agentAnalyze">Analyze request</button>
+          </form>
+          <div id="agentRunStatus" class="agent-run-status" aria-live="polite"></div>
+          <div id="agentRunDetails" class="agent-run-details"></div>
+          <div id="agentClarifications" class="agent-clarifications"></div>
+          <div id="agentSkillFields" class="agent-skill-fields"></div>
+          <button id="agentConfirmButton" class="agent-confirm-button" type="button" disabled data-i18n="agentConfirm">Confirm generation</button>
+          <button id="agentRetryButton" class="agent-confirm-button secondary-action" type="button" hidden data-i18n="agentRetryFailed">Retry failed outputs</button>
+        </section>
+        <section id="skillPanel" class="agent-workbench-panel" role="tabpanel" hidden>
+          <div class="agent-workbench-heading">
+            <h2 data-i18n="skillHeading">Skills</h2>
+            <p data-i18n="skillHint">Choose a direction before analysis, or replace the recommendation before generation.</p>
+          </div>
+          <div id="agentSkillList" class="agent-skill-list" aria-live="polite"></div>
+        </section>
+        <section id="historyPanel" class="agent-workbench-panel" role="tabpanel" hidden>
+          <div class="agent-workbench-heading">
+            <h2 data-i18n="historyHeading">Run history</h2>
+            <p data-i18n="historyHint">Review the brief, inputs, outputs, and retry status. Reusing a request always returns to explicit confirmation.</p>
+          </div>
+          <div id="agentRunHistory" class="agent-history-list" aria-live="polite"></div>
+        </section>
+        <section id="assetsPanel" class="agent-workbench-panel" role="tabpanel" hidden>
+          <div class="agent-workbench-heading">
+            <h2 data-i18n="assetsHeading">Assets</h2>
+            <p data-i18n="assetsHint">Uploaded, generated, and edited images stay available after you remove them from the canvas.</p>
+          </div>
+          <div id="canvasAssetList" class="canvas-asset-list" aria-live="polite"></div>
+        </section>
+      </aside>
     </div>
 
     <div id="toast" class="toast" hidden></div>

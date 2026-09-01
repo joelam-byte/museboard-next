@@ -35,6 +35,24 @@ const undoButton = document.querySelector('[data-history-action="undo"]');
 const redoButton = document.querySelector('[data-history-action="redo"]');
 const imageUploadInput = document.querySelector("#imageUploadInput");
 const colorPalette = document.querySelector("#colorPalette");
+const agentWorkbench = document.querySelector("#agentWorkbench");
+const agentPanel = document.querySelector("#agentPanel");
+const skillPanel = document.querySelector("#skillPanel");
+const historyPanel = document.querySelector("#historyPanel");
+const assetsPanel = document.querySelector("#assetsPanel");
+const agentRunHistoryList = document.querySelector("#agentRunHistory");
+const canvasAssetList = document.querySelector("#canvasAssetList");
+const agentRequestForm = document.querySelector("#agentRequestForm");
+const agentRequest = document.querySelector("#agentRequest");
+const agentAnalyzeButton = document.querySelector("#agentAnalyzeButton");
+const agentSourceSummary = document.querySelector("#agentSourceSummary");
+const agentRunStatus = document.querySelector("#agentRunStatus");
+const agentRunDetails = document.querySelector("#agentRunDetails");
+const agentClarifications = document.querySelector("#agentClarifications");
+const agentSkillFields = document.querySelector("#agentSkillFields");
+const agentConfirmButton = document.querySelector("#agentConfirmButton");
+const agentRetryButton = document.querySelector("#agentRetryButton");
+const agentSkillList = document.querySelector("#agentSkillList");
 const canvasSearch = createCanvasSearchUi();
 const defaultCanvasTool = "select";
 const zoomWheelSensitivity = 0.0024;
@@ -153,12 +171,94 @@ const translations = {
     jobDeleteBlocked: "A running image job cannot be deleted. Wait for it to finish or fail.",
     chatSendStarted: "Sending image to bound chat...",
     chatSendDone: "Image submitted through Codex app-server. If it does not appear in the visible chat, use Copy @file.",
-    fileMentionCopied: "@file reference copied. Paste it into the Codex chat box.",
+    fileMentionCopied: "Image reference copied. Return to the chat and paste it.",
     fileMentionCopyFailed: "Could not copy @file reference.",
     chatNotBound: "Bind this canvas to a Codex thread first.",
     uploadDone: "Image uploaded.",
     uploadFailed: "Image upload failed.",
     downloadFailed: "Download failed.",
+    agentWorkbench: "Museboard Agent workbench",
+    agentTab: "Agent",
+    skillTab: "Skill",
+    historyTab: "History",
+    assetsTab: "Assets",
+    historyHeading: "Run history",
+    historyHint: "Review the brief, inputs, outputs, and retry status. Reusing a request always returns to explicit confirmation.",
+    historyEmpty: "No Agent runs in this canvas yet.",
+    historyLoadFailed: "Could not load run history.",
+    historyOpen: "View",
+    historyReuse: "Run again",
+    historyCopy: "Copy run",
+    historyCopied: "Run summary copied.",
+    historyPrompt: "Prompt",
+    historySourcesMissing: "The original reference image is no longer on this canvas.",
+    historyDraftRestored: "Request restored. Review and analyze it before confirming generation.",
+    assetsHeading: "Assets",
+    assetsHint: "Uploaded, generated, and edited images stay available after you remove them from the canvas.",
+    assetsEmpty: "No retained image assets yet.",
+    assetsLoadFailed: "Could not load assets.",
+    assetUpload: "Upload",
+    assetGeneration: "Generated",
+    assetConversationGeneration: "Chat generated",
+    assetEdit: "Edited",
+    assetOnCanvas: "on canvas",
+    assetRemoved: "removed from canvas",
+    assetLocate: "Locate",
+    assetInsert: "Insert",
+    assetInserted: "Asset inserted on the canvas.",
+    assetCopy: "Copy @file",
+    agentHeading: "Image direction",
+    agentModeNew: "New image",
+    agentModeEdit: "Edit / reference",
+    agentModeNewHint: "New image mode ignores selected canvas images.",
+    agentModeEditEmpty: "Select one to three reference images, or switch to New image.",
+    agentSourceEmpty: "Select one to three images on the canvas.",
+    agentSourceSelected: "selected image.",
+    agentSourceSelectedPlural: "selected images.",
+    agentSourceTooMany: "images selected. Keep up to three image references.",
+    agentRequestLabel: "What would you like to make or change?",
+    agentRequestPlaceholder: "Describe the outcome, what to preserve, and the output you need.",
+    agentAnalyze: "Analyze request",
+    agentConfirm: "Confirm generation",
+    agentConfirmPending: "Analyze a request and resolve any clarifications first.",
+    agentConfirmReady: "Start the selected Skill.",
+    agentGenerateNeedsNoSources: "New image mode must not include reference images.",
+    agentConfirmSingleSource: "This confirmed V1 workflow currently uses exactly one source image.",
+    agentConfirmEditText: "Edit Text keeps its existing OCR-and-replace workflow. Start it from the canvas toolbar.",
+    agentConfirmUnsupported: "This Skill's multi-output execution is scheduled for a later V1 stage.",
+    agentStartingGeneration: "Starting confirmed generation…",
+    agentSkillFields: "Skill details",
+    agentBusinessFieldsRequired: "Complete all required Skill fields before confirmation.",
+    agentRetryFailed: "Retry failed outputs",
+    agentRetrying: "Retrying failed outputs…",
+    skillHeading: "Skills",
+    skillHint: "Choose a direction before analysis, or replace the recommendation before generation.",
+    agentAnalyzeFailed: "Could not analyze this request.",
+    agentSkillFailed: "Could not select this Skill.",
+    agentSkillLoadFailed: "Could not load Skills.",
+    agentSourcesInvalid: "Select one to three image references first.",
+    agentRequestRequired: "Describe the result you need before analysis.",
+    agentAnalyzing: "Analyzing request…",
+    agentBriefUpdating: "Updating brief…",
+    agentClarificationsRequired: "Answer each required clarification before continuing.",
+    agentClarificationPlaceholder: "Your answer",
+    agentClarificationChoose: "Choose an option",
+    agentClarificationUpdate: "Update brief",
+    agentClarificationFailed: "Could not update the brief.",
+    agentSkillSelected: "Selected",
+    agentStatusNeedsClarification: "Clarification needed before generation.",
+    agentStatusReady: "Brief ready. Review it and explicitly confirm generation.",
+    agentStatusRunning: "Generation is running.",
+    agentStatusSucceeded: "Generation completed.",
+    agentStatusPartial: "Some outputs completed.",
+    agentStatusFailed: "This Agent run failed.",
+    agentStatusCancelled: "This Agent run was cancelled.",
+    agentBriefChanges: "Changes",
+    agentBriefPreserve: "Preserve",
+    agentBriefStyle: "Style",
+    agentBriefComposition: "Composition",
+    agentBriefOutputs: "Outputs",
+    agentBriefSelectedSkill: "Selected Skill",
     actions: {
       "quick-edit": "Quick Edit",
       "remove-bg": "Remove BG",
@@ -170,8 +270,7 @@ const translations = {
       "layer-down": "Layer down",
       "group-layer-group": "Group",
       "edit-text": "Edit Text",
-      "send-to-chat": "Send to chat",
-      "copy-file-mention": "Copy @file",
+      "copy-file-mention": "Copy to chat",
       "download": "Download"
     },
     actionNames: {
@@ -185,8 +284,7 @@ const translations = {
       "layer-down": "Layer down",
       "group-layer-group": "Group",
       "edit-text": "Edit Text",
-      "send-to-chat": "Send to chat",
-      "copy-file-mention": "Copy @file",
+      "copy-file-mention": "Copy to chat",
       "download": "Download"
     },
     tools: {
@@ -308,12 +406,94 @@ const translations = {
     jobDeleteBlocked: "图片任务仍在运行，完成或失败后才能删除。",
     chatSendStarted: "正在发送图片到已绑定对话...",
     chatSendDone: "图片已通过 Codex app-server 提交；如果当前对话没有显示，请用“复制 @文件”。",
-    fileMentionCopied: "@file 引用已复制，请粘贴到 Codex 聊天框。",
+    fileMentionCopied: "已复制图片引用，请回到对话粘贴。",
     fileMentionCopyFailed: "无法复制 @file 引用。",
     chatNotBound: "请先把画布绑定到 Codex thread。",
     uploadDone: "图片已上传。",
     uploadFailed: "图片上传失败。",
     downloadFailed: "下载失败。",
+    agentWorkbench: "Museboard 智能工作面板",
+    agentTab: "智能助手",
+    skillTab: "技能",
+    historyTab: "历史",
+    assetsTab: "资产",
+    historyHeading: "运行历史",
+    historyHint: "查看需求简报、输入、输出和重试状态。复用需求会回到明确确认步骤。",
+    historyEmpty: "当前画布还没有智能助手任务。",
+    historyLoadFailed: "无法加载运行历史。",
+    historyOpen: "查看",
+    historyReuse: "重新运行",
+    historyCopy: "复制运行",
+    historyCopied: "运行摘要已复制。",
+    historyPrompt: "提示词",
+    historySourcesMissing: "原始参考图已不在当前画布中。",
+    historyDraftRestored: "需求已回填。请先审核并分析，再确认生成。",
+    assetsHeading: "资产",
+    assetsHint: "上传、生成和编辑的图片即使从画布移除，仍会保存在这里。",
+    assetsEmpty: "尚没有保留的图片资产。",
+    assetsLoadFailed: "无法加载资产。",
+    assetUpload: "上传",
+    assetGeneration: "生成",
+    assetConversationGeneration: "对话生成",
+    assetEdit: "编辑",
+    assetOnCanvas: "在画布上",
+    assetRemoved: "已从画布移除",
+    assetLocate: "定位",
+    assetInsert: "插入",
+    assetInserted: "资产已插入画布。",
+    assetCopy: "复制 @文件",
+    agentHeading: "图片方向",
+    agentModeNew: "新建图片",
+    agentModeEdit: "编辑 / 参考生成",
+    agentModeNewHint: "新建图片会忽略当前选中的画布图片。",
+    agentModeEditEmpty: "请选择一至三张参考图，或切换到“新建图片”。",
+    agentSourceEmpty: "请在画布上选择一至三张图片。",
+    agentSourceSelected: "张图片已选中。",
+    agentSourceSelectedPlural: "张图片已选中。",
+    agentSourceTooMany: "张图片已选中。请保留至多三张参考图。",
+    agentRequestLabel: "你想生成或修改什么？",
+    agentRequestPlaceholder: "描述目标结果、需要保留的内容与输出要求。",
+    agentAnalyze: "分析需求",
+    agentConfirm: "确认生成",
+    agentConfirmPending: "请先分析需求并完成必要的澄清。",
+    agentConfirmReady: "启动已选技能。",
+    agentGenerateNeedsNoSources: "新建图片不能包含参考图。",
+    agentConfirmSingleSource: "当前已确认的 V1 流程仅支持一张源图片。",
+    agentConfirmEditText: "编辑文字保留原有的 OCR 识别与替换流程，请从画布工具栏启动。",
+    agentConfirmUnsupported: "此技能的多输出执行将在后续 V1 阶段接入。",
+    agentStartingGeneration: "正在启动确认后的生成…",
+    agentSkillFields: "技能参数",
+    agentBusinessFieldsRequired: "请先完成所有必填技能参数。",
+    agentRetryFailed: "仅重试失败项",
+    agentRetrying: "正在重试失败项…",
+    skillHeading: "技能",
+    skillHint: "可在分析前选择方向，或在生成前替换推荐技能。",
+    agentAnalyzeFailed: "无法分析此需求。",
+    agentSkillFailed: "无法选择此技能。",
+    agentSkillLoadFailed: "无法加载技能。",
+    agentSourcesInvalid: "请先选择一至三张参考图。",
+    agentRequestRequired: "请先描述你需要的结果。",
+    agentAnalyzing: "正在分析需求…",
+    agentBriefUpdating: "正在更新需求简报…",
+    agentClarificationsRequired: "请回答每个必填澄清问题后再继续。",
+    agentClarificationPlaceholder: "请输入答案",
+    agentClarificationChoose: "请选择一项",
+    agentClarificationUpdate: "更新简报",
+    agentClarificationFailed: "无法更新需求简报。",
+    agentSkillSelected: "已选择",
+    agentStatusNeedsClarification: "生成前需要补充澄清信息。",
+    agentStatusReady: "需求简报已就绪。请审核后明确确认生成。",
+    agentStatusRunning: "正在生成。",
+    agentStatusSucceeded: "生成已完成。",
+    agentStatusPartial: "部分输出已完成。",
+    agentStatusFailed: "此智能助手任务失败。",
+    agentStatusCancelled: "此智能助手任务已取消。",
+    agentBriefChanges: "修改项",
+    agentBriefPreserve: "保留项",
+    agentBriefStyle: "风格",
+    agentBriefComposition: "构图",
+    agentBriefOutputs: "输出",
+    agentBriefSelectedSkill: "已选技能",
     actions: {
       "quick-edit": "快捷编辑",
       "remove-bg": "去背景",
@@ -325,8 +505,7 @@ const translations = {
       "layer-down": "下移一层",
       "group-layer-group": "成组",
       "edit-text": "编辑文字",
-      "send-to-chat": "发送到对话",
-      "copy-file-mention": "复制 @文件",
+      "copy-file-mention": "复制到对话",
       "download": "下载"
     },
     actionNames: {
@@ -340,8 +519,7 @@ const translations = {
       "layer-down": "下移一层",
       "group-layer-group": "成组",
       "edit-text": "编辑文字",
-      "send-to-chat": "发送到对话",
-      "copy-file-mention": "复制 @文件",
+      "copy-file-mention": "复制到对话",
       "download": "下载"
     },
     tools: {
@@ -412,6 +590,15 @@ let versionDiffOverlay = null;
 let versionDiffHeatmapToken = 0;
 let appUpdateInfo = null;
 let appUpdateBusy = false;
+let agentSkills = [];
+let agentRunHistoryItems = [];
+let canvasAssets = [];
+let activeAgentRun = null;
+let agentDraftSkillId = null;
+let agentInputMode = "edit";
+let activeAgentTab = "agent";
+let agentRunPollTimer = null;
+const confirmableAgentSkillIds = new Set(["quick-edit", "expand", "remove-bg", "edit-elements"]);
 const composerImageActions = new Set(["quick-edit", "expand", "edit-text"]);
 const immediateImageJobActions = new Set(["remove-bg", "edit-elements"]);
 const quickEditMarkupTools = new Set(["annotation", "pencil", "text"]);
@@ -426,10 +613,10 @@ const singleSelectionActions = new Set([
   ...composerImageActions,
   ...immediateImageJobActions,
   "crop",
-  "send-to-chat",
   "copy-file-mention"
 ]);
 
+initAgentWorkbench();
 initLayerBrowserUi();
 initPromptHistoryUi();
 applyLanguage();
@@ -438,6 +625,11 @@ renderCanvasHistoryStatus();
 renderColorPalette();
 await loadProjects();
 await loadState();
+await loadAgentSkills().catch((error) => setAgentStatus(error?.message || t("agentSkillLoadFailed"), { error: true }));
+await Promise.all([
+  loadAgentRunHistory().catch(() => {}),
+  loadCanvasAssets().catch(() => {})
+]);
 refreshAppUpdateStatus({ checkRemote: true }).catch(() => {});
 setInterval(loadState, 2000);
 
@@ -616,10 +808,6 @@ document.addEventListener("click", (event) => {
       toggleSelectedLayerGroupLock();
       return;
     }
-    if (action === "send-to-chat") {
-      sendSelectedImageToChat();
-      return;
-    }
     if (action === "copy-file-mention") {
       copySelectedFileMention();
       return;
@@ -725,7 +913,7 @@ document.addEventListener("pointerdown", (event) => {
   }
   if (isSettingsEvent || isPromptHistoryEvent || isLayerBrowserEvent || isCanvasSearchEvent) return;
   if (!quickEditObjectId && !selectedId && selectedIds.size === 0) return;
-  if (event.target.closest(".canvas-object, .selection-toolbar, .quick-edit-composer, .color-palette, .tool-dock, .prompt-history-panel, .prompt-history-button, .layer-browser-panel, .layer-browser-button, .canvas-search")) return;
+  if (event.target.closest(".canvas-object, .selection-toolbar, .quick-edit-composer, .color-palette, .tool-dock, .prompt-history-panel, .prompt-history-button, .layer-browser-panel, .layer-browser-button, .canvas-search, .agent-workbench")) return;
   closeQuickEdit({ keepPrompt: true });
   selectObject(null);
 });
@@ -1510,6 +1698,780 @@ async function copyPromptToClipboard(prompt) {
   }
 }
 
+function initAgentWorkbench() {
+  if (!agentWorkbench) return;
+  agentWorkbench.querySelectorAll("[data-agent-tab]").forEach((button) => {
+    button.addEventListener("click", () => setAgentTab(button.dataset.agentTab));
+  });
+  agentWorkbench.querySelectorAll("[data-agent-input-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      agentInputMode = button.dataset.agentInputMode === "new" ? "new" : "edit";
+      if (agentInputMode === "new") agentDraftSkillId = "generate-image";
+      if (agentInputMode === "edit" && agentDraftSkillId === "generate-image") agentDraftSkillId = null;
+      renderAgentSourceSelection();
+      renderAgentSkills();
+    });
+  });
+  agentRequestForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitAgentRequest().catch((error) => setAgentStatus(error?.message || t("agentAnalyzeFailed"), { error: true }));
+  });
+  agentSkillList?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-skill-id]");
+    if (!button) return;
+    selectAgentSkill(button.dataset.skillId).catch((error) => setAgentStatus(error?.message || t("agentSkillFailed"), { error: true }));
+  });
+  agentConfirmButton?.addEventListener("click", () => {
+    confirmActiveAgentRun().catch((error) => setAgentStatus(error?.message || t("agentAnalyzeFailed"), { error: true }));
+  });
+  agentRetryButton?.addEventListener("click", () => {
+    retryActiveAgentRun().catch((error) => setAgentStatus(error?.message || t("agentAnalyzeFailed"), { error: true }));
+  });
+  agentRunHistoryList?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-history-action]");
+    if (!button) return;
+    const runId = button.dataset.agentRunId;
+    if (button.dataset.historyAction === "view") {
+      openAgentRunFromHistory(runId).catch((error) => showToast(error?.message || t("historyLoadFailed")));
+      return;
+    }
+    if (button.dataset.historyAction === "copy") {
+      copyAgentRunSummary(runId).catch((error) => showToast(error?.message || t("historyLoadFailed")));
+      return;
+    }
+    if (button.dataset.historyAction === "reuse") {
+      try {
+        restoreAgentRunDraft(runId);
+      } catch (error) {
+        showToast(error?.message || t("historySourcesMissing"));
+      }
+    }
+  });
+  canvasAssetList?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-asset-action]");
+    if (!button) return;
+    const assetId = button.dataset.assetId;
+    const action = button.dataset.assetAction;
+    if (action === "locate") {
+      locateCanvasAsset(assetId).catch((error) => showToast(error?.message || t("assetsLoadFailed")));
+      return;
+    }
+    if (action === "insert") {
+      insertCanvasAsset(assetId).catch((error) => showToast(error?.message || t("assetsLoadFailed")));
+      return;
+    }
+    if (action === "copy") {
+      copyCanvasAssetFileMention(assetId).catch((error) => showToast(error?.message || t("fileMentionCopyFailed")));
+    }
+  });
+  renderAgentSourceSelection();
+  renderAgentRun();
+}
+
+async function loadAgentSkills() {
+  const payload = await requestAgentApi("/api/skills");
+  agentSkills = Array.isArray(payload.skills) ? payload.skills : [];
+  renderAgentSkills();
+}
+
+function setAgentTab(tab) {
+  activeAgentTab = ["agent", "skill", "history", "assets"].includes(tab) ? tab : "agent";
+  agentPanel.hidden = activeAgentTab !== "agent";
+  skillPanel.hidden = activeAgentTab !== "skill";
+  historyPanel.hidden = activeAgentTab !== "history";
+  assetsPanel.hidden = activeAgentTab !== "assets";
+  agentWorkbench.querySelectorAll("[data-agent-tab]").forEach((button) => {
+    button.setAttribute("aria-selected", String(button.dataset.agentTab === activeAgentTab));
+  });
+  if (activeAgentTab === "history") loadAgentRunHistory().catch(() => {});
+  if (activeAgentTab === "assets") loadCanvasAssets().catch(() => {});
+}
+
+function selectedAgentSources() {
+  if (!state?.objects) return [];
+  return [...selectedIds]
+    .map((id) => state.objects.find((object) => object.id === id))
+    .filter((object) => object && (object.type || "image") === "image");
+}
+
+function renderAgentSourceSelection() {
+  if (!agentSourceSummary) return;
+  const sources = selectedAgentSources();
+  const count = sources.length;
+  const isNewImage = agentInputMode === "new";
+  const valid = isNewImage || (count >= 1 && count <= 3);
+  agentSourceSummary.classList.toggle("has-sources", valid);
+  if (isNewImage) {
+    agentSourceSummary.textContent = t("agentModeNewHint");
+  } else if (count === 0) {
+    agentSourceSummary.textContent = t("agentModeEditEmpty");
+  } else if (count > 3) {
+    agentSourceSummary.textContent = `${count} ${t("agentSourceTooMany")}`;
+  } else {
+    agentSourceSummary.textContent = `${count} ${t(count === 1 ? "agentSourceSelected" : "agentSourceSelectedPlural")}`;
+  }
+  if (agentAnalyzeButton) agentAnalyzeButton.disabled = !valid;
+  agentWorkbench?.querySelectorAll("[data-agent-input-mode]").forEach((button) => {
+    button.setAttribute("aria-checked", String(button.dataset.agentInputMode === agentInputMode));
+  });
+}
+
+async function submitAgentRequest() {
+  const sources = selectedAgentSources();
+  const rawRequest = agentRequest?.value.trim() || "";
+  const effectiveSources = agentInputMode === "new" ? [] : sources;
+  if (agentInputMode !== "new" && (effectiveSources.length < 1 || effectiveSources.length > 3)) throw new Error(t("agentSourcesInvalid"));
+  if (!rawRequest) throw new Error(t("agentRequestRequired"));
+  agentAnalyzeButton.disabled = true;
+  setAgentStatus(t("agentAnalyzing"));
+  try {
+    const payload = await requestAgentApi("/api/agent-runs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: agentRunId(),
+        sourceObjectIds: effectiveSources.map((source) => source.id),
+        rawRequest
+      })
+    });
+    activeAgentRun = payload.agentRun;
+    if (agentDraftSkillId && agentDraftSkillId !== activeAgentRun.selectedSkillId) {
+      await selectAgentSkill(agentDraftSkillId, { preserveStatus: true });
+    }
+    renderAgentRun();
+    loadAgentRunHistory().catch(() => {});
+    setAgentTab("agent");
+  } finally {
+    renderAgentSourceSelection();
+  }
+}
+
+function agentRunId() {
+  const suffix = globalThis.crypto?.randomUUID?.().replace(/-/g, "")
+    || `${Date.now()}${Math.random().toString(16).slice(2)}`;
+  return `agent_${suffix}`;
+}
+
+async function selectAgentSkill(skillId, { preserveStatus = false } = {}) {
+  if (!agentSkills.some((skill) => skill.id === skillId)) throw new Error("That Skill is not available in this canvas.");
+  agentDraftSkillId = skillId;
+  if (!activeAgentRun || !["needs_clarification", "ready"].includes(activeAgentRun.status)) {
+    renderAgentSkills();
+    return;
+  }
+  const payload = await requestAgentApi(`/api/agent-runs/${encodeURIComponent(activeAgentRun.id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      selectedSkillId: skillId,
+      optimizedPrompt: activeAgentRun.optimizedPrompt
+    })
+  });
+  activeAgentRun = payload.agentRun;
+  if (!preserveStatus) setAgentStatus(`${t("agentSkillSelected")} ${skillName(skillId)}.`);
+  renderAgentRun();
+}
+
+async function submitAgentClarifications() {
+  if (!activeAgentRun || activeAgentRun.status !== "needs_clarification") return;
+  const answers = {};
+  for (const question of activeAgentRun.clarificationQuestions) {
+    const field = agentClarifications.querySelector(`[name="${CSS.escape(question.id)}"]`);
+    const answer = field?.value?.trim() || "";
+    if (question.required && !answer) throw new Error(t("agentClarificationsRequired"));
+    if (answer) answers[question.id] = answer;
+  }
+  const submit = agentClarifications.querySelector("button[type='submit']");
+  if (submit) submit.disabled = true;
+  setAgentStatus(t("agentBriefUpdating"));
+  try {
+    const payload = await requestAgentApi(`/api/agent-runs/${encodeURIComponent(activeAgentRun.id)}/answers`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ answers })
+    });
+    activeAgentRun = payload.agentRun;
+    renderAgentRun();
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+}
+
+async function confirmActiveAgentRun() {
+  const unavailableReason = agentConfirmUnavailableReason(activeAgentRun);
+  if (unavailableReason) throw new Error(unavailableReason);
+  const skillInputs = businessSkillInputsForRun(activeAgentRun);
+  if (skillInputs?.error) throw new Error(skillInputs.error);
+  agentConfirmButton.disabled = true;
+  setAgentStatus(t("agentStartingGeneration"));
+  try {
+    const payload = await requestAgentApi(`/api/agent-runs/${encodeURIComponent(activeAgentRun.id)}/confirm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(skillInputs ? { skillInputs: skillInputs.values } : {})
+    });
+    activeAgentRun = payload.agentRun;
+    renderAgentRun();
+    loadAgentRunHistory().catch(() => {});
+    trackAgentImageJobs(payload);
+    pollActiveAgentRun(activeAgentRun.id);
+  } catch (error) {
+    renderAgentRun();
+    throw error;
+  }
+}
+
+async function retryActiveAgentRun() {
+  if (!activeAgentRun || !isBusinessAgentSkill(activeAgentRun.selectedSkillId)) return;
+  agentRetryButton.disabled = true;
+  setAgentStatus(t("agentRetrying"));
+  try {
+    const payload = await requestAgentApi(`/api/agent-runs/${encodeURIComponent(activeAgentRun.id)}/retry`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({})
+    });
+    activeAgentRun = payload.agentRun;
+    renderAgentRun();
+    loadAgentRunHistory().catch(() => {});
+    trackAgentImageJobs(payload);
+    pollActiveAgentRun(activeAgentRun.id);
+  } finally {
+    renderAgentRun();
+  }
+}
+
+function trackAgentImageJobs(payload) {
+  const imageJobs = Array.isArray(payload.imageJobs)
+    ? payload.imageJobs
+    : payload.imageJob ? [payload.imageJob] : [];
+  const source = state?.objects?.find((object) => object.id === activeAgentRun?.sourceObjectIds?.[0]);
+  for (const imageJob of imageJobs) {
+    if (!imageJob?.id) continue;
+    if (source) frameJobPlacement(source.id, imageJob.placeholder || null);
+    pollImageJob(imageJob.id);
+  }
+}
+
+function pollActiveAgentRun(agentRunId) {
+  window.clearTimeout(agentRunPollTimer);
+  const tick = async () => {
+    if (!activeAgentRun || activeAgentRun.id !== agentRunId) return;
+    try {
+      const payload = await requestAgentApi(`/api/agent-runs/${encodeURIComponent(agentRunId)}`);
+      if (!activeAgentRun || activeAgentRun.id !== agentRunId) return;
+      activeAgentRun = payload.agentRun;
+      renderAgentRun();
+      if (activeAgentRun.status === "running") {
+        agentRunPollTimer = window.setTimeout(tick, 2500);
+      } else if (["succeeded", "partial", "failed"].includes(activeAgentRun.status)) {
+        await Promise.all([loadState(), loadAgentRunHistory().catch(() => {}), loadCanvasAssets().catch(() => {})]);
+      }
+    } catch (error) {
+      if (activeAgentRun?.id === agentRunId) setAgentStatus(error?.message || t("agentAnalyzeFailed"), { error: true });
+    }
+  };
+  agentRunPollTimer = window.setTimeout(tick, 2500);
+}
+
+function renderAgentRun() {
+  if (!agentRunStatus || !agentRunDetails || !agentClarifications) return;
+  agentRunDetails.replaceChildren();
+  agentClarifications.replaceChildren();
+  agentSkillFields?.replaceChildren();
+  if (!activeAgentRun) {
+    agentRunStatus.textContent = "";
+    agentRunStatus.classList.remove("is-error");
+    renderAgentSkills();
+    renderAgentRetryButton();
+    renderAgentConfirmButton();
+    return;
+  }
+
+  agentRunStatus.textContent = agentRunStatusLabel(activeAgentRun.status);
+  agentRunStatus.classList.remove("is-error");
+  const brief = activeAgentRun.structuredBrief;
+  if (brief) {
+    appendAgentBriefList(agentRunDetails, t("agentBriefChanges"), brief.modifications);
+    appendAgentBriefList(agentRunDetails, t("agentBriefPreserve"), brief.preservationRules);
+    appendAgentBriefText(agentRunDetails, t("agentBriefStyle"), brief.style);
+    appendAgentBriefText(agentRunDetails, t("agentBriefComposition"), brief.composition);
+    appendAgentBriefList(agentRunDetails, t("agentBriefOutputs"), activeAgentRun.plannedOutputs.map((output) => `${output.label}: ${output.purpose}`));
+    appendAgentBriefText(agentRunDetails, t("agentBriefSelectedSkill"), skillName(activeAgentRun.selectedSkillId));
+  }
+  if (activeAgentRun.status === "needs_clarification") renderAgentClarifications();
+  renderAgentSkillFields();
+  agentDraftSkillId = activeAgentRun.selectedSkillId || agentDraftSkillId;
+  renderAgentSkills();
+  renderAgentConfirmButton();
+  renderAgentRetryButton();
+}
+
+function renderAgentConfirmButton() {
+  if (!agentConfirmButton) return;
+  const unavailableReason = agentConfirmUnavailableReason(activeAgentRun);
+  agentConfirmButton.disabled = Boolean(unavailableReason);
+  agentConfirmButton.title = unavailableReason || t("agentConfirmReady");
+}
+
+function agentConfirmUnavailableReason(agentRun) {
+  if (!agentRun || agentRun.status !== "ready") return t("agentConfirmPending");
+  if (agentRun.selectedSkillId === "generate-image") {
+    return agentRun.sourceObjectIds.length === 0 ? "" : t("agentGenerateNeedsNoSources");
+  }
+  if (isBusinessAgentSkill(agentRun.selectedSkillId)) {
+    if (agentRun.sourceObjectIds.length < 1 || agentRun.sourceObjectIds.length > 3) return t("agentSourcesInvalid");
+    return businessSkillInputsForRun(agentRun)?.error || "";
+  }
+  if (agentRun.sourceObjectIds.length !== 1) return t("agentConfirmSingleSource");
+  if (agentRun.selectedSkillId === "edit-text") return t("agentConfirmEditText");
+  if (!confirmableAgentSkillIds.has(agentRun.selectedSkillId)) return t("agentConfirmUnsupported");
+  return "";
+}
+
+function isBusinessAgentSkill(skillId) {
+  const descriptor = agentSkills.find((skill) => skill.id === skillId);
+  return Boolean(descriptor?.briefFields?.length && ["xiaohongshu-cover", "product-marketing-set"].includes(skillId));
+}
+
+function businessSkillInputsForRun(agentRun) {
+  if (!isBusinessAgentSkill(agentRun?.selectedSkillId)) return null;
+  const descriptor = agentSkills.find((skill) => skill.id === agentRun.selectedSkillId);
+  const values = {};
+  for (const field of descriptor.briefFields) {
+    const selector = '[data-agent-skill-field="' + CSS.escape(field.id) + '"]';
+    const control = agentSkillFields?.querySelector(selector);
+    const value = control ? control.value.trim() : String(agentRun.skillInputs?.[field.id] || "").trim();
+    if (field.required && !value) return { error: t("agentBusinessFieldsRequired") };
+    values[field.id] = value;
+  }
+  return { values };
+}
+
+function renderAgentSkillFields() {
+  if (!agentSkillFields || !activeAgentRun || activeAgentRun.status !== "ready") return;
+  const descriptor = agentSkills.find((skill) => skill.id === activeAgentRun.selectedSkillId);
+  if (!descriptor?.briefFields?.length || !isBusinessAgentSkill(descriptor.id)) return;
+
+  const section = document.createElement("section");
+  section.className = "agent-skill-field-section";
+  const heading = document.createElement("strong");
+  heading.textContent = t("agentSkillFields");
+  section.append(heading);
+
+  for (const field of descriptor.briefFields) {
+    const wrapper = document.createElement("label");
+    wrapper.className = "agent-skill-field";
+    const label = document.createElement("span");
+    label.textContent = field.required ? field.label + " *" : field.label;
+    const control = field.type === "select"
+      ? document.createElement("select")
+      : field.type === "textarea" ? document.createElement("textarea") : document.createElement("input");
+    control.dataset.agentSkillField = field.id;
+    control.required = field.required;
+    if (control instanceof HTMLInputElement) {
+      control.type = "text";
+      control.autocomplete = "off";
+    }
+    if (control instanceof HTMLTextAreaElement) {
+      control.rows = 3;
+      control.spellcheck = true;
+    }
+    if (control instanceof HTMLSelectElement) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = t("agentClarificationChoose");
+      control.append(placeholder);
+      for (const option of field.options || []) {
+        const choice = document.createElement("option");
+        choice.value = option;
+        choice.textContent = option;
+        control.append(choice);
+      }
+    }
+    control.value = activeAgentRun.skillInputs?.[field.id] || "";
+    control.addEventListener("input", () => renderAgentConfirmButton());
+    control.addEventListener("change", () => renderAgentConfirmButton());
+    wrapper.append(label, control);
+    section.append(wrapper);
+  }
+  agentSkillFields.append(section);
+}
+
+function renderAgentRetryButton() {
+  if (!agentRetryButton) return;
+  const canRetry = Boolean(
+    activeAgentRun
+    && isBusinessAgentSkill(activeAgentRun.selectedSkillId)
+    && ["partial", "failed"].includes(activeAgentRun.status)
+    && activeAgentRun.plannedOutputs.some((output) => output.status === "failed")
+  );
+  agentRetryButton.hidden = !canRetry;
+  agentRetryButton.disabled = !canRetry;
+  agentRetryButton.title = canRetry ? t("agentRetryFailed") : "";
+}
+function renderAgentClarifications() {
+  const form = document.createElement("form");
+  form.className = "agent-clarifications";
+  for (const question of activeAgentRun.clarificationQuestions) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "agent-clarification";
+    const label = document.createElement("label");
+    label.textContent = question.required ? `${question.prompt} *` : question.prompt;
+    const field = question.options.length ? document.createElement("select") : document.createElement("input");
+    field.name = question.id;
+    field.required = question.required;
+    if (field instanceof HTMLInputElement) field.placeholder = t("agentClarificationPlaceholder");
+    if (field instanceof HTMLSelectElement) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = t("agentClarificationChoose");
+      field.append(placeholder);
+      question.options.forEach((option) => {
+        const choice = document.createElement("option");
+        choice.value = option;
+        choice.textContent = option;
+        field.append(choice);
+      });
+    }
+    field.value = activeAgentRun.clarificationAnswers?.[question.id] || "";
+    wrapper.append(label, field);
+    form.append(wrapper);
+  }
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.textContent = t("agentClarificationUpdate");
+  form.append(submit);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitAgentClarifications().catch((error) => setAgentStatus(error?.message || t("agentClarificationFailed"), { error: true }));
+  });
+  agentClarifications.append(form);
+}
+
+function appendAgentBriefList(container, title, values) {
+  if (!Array.isArray(values) || values.length === 0) return;
+  const section = document.createElement("section");
+  section.className = "agent-brief-section";
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const list = document.createElement("ul");
+  values.forEach((value) => {
+    const item = document.createElement("li");
+    item.textContent = value;
+    list.append(item);
+  });
+  section.append(heading, list);
+  container.append(section);
+}
+
+function appendAgentBriefText(container, title, value) {
+  if (!value) return;
+  const section = document.createElement("section");
+  section.className = "agent-brief-section";
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const text = document.createElement("span");
+  text.textContent = value;
+  section.append(heading, text);
+  container.append(section);
+}
+
+function renderAgentSkills() {
+  if (!agentSkillList) return;
+  agentSkillList.replaceChildren();
+  for (const skill of agentSkills) {
+    const availableInMode = agentInputMode === "new"
+      ? skill.id === "generate-image"
+      : skill.id !== "generate-image";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "agent-skill-card";
+    button.dataset.skillId = skill.id;
+    button.disabled = !availableInMode;
+    button.classList.toggle("active", skill.id === (activeAgentRun?.selectedSkillId || agentDraftSkillId));
+    const name = document.createElement("strong");
+    name.textContent = skillName(skill.id);
+    const description = document.createElement("span");
+    description.textContent = skillDescription(skill.id, skill.description);
+    button.append(name, description);
+    agentSkillList.append(button);
+  }
+}
+
+async function loadAgentRunHistory() {
+  if (!agentRunHistoryList) return;
+  try {
+    const payload = await requestAgentApi("/api/agent-runs?limit=50");
+    agentRunHistoryItems = Array.isArray(payload.agentRuns) ? payload.agentRuns : [];
+    renderAgentRunHistory();
+  } catch (error) {
+    renderAgentRunHistory(error);
+    throw error;
+  }
+}
+
+function renderAgentRunHistory(error = null) {
+  if (!agentRunHistoryList) return;
+  agentRunHistoryList.replaceChildren();
+  if (error) {
+    appendAgentListEmpty(agentRunHistoryList, error.message || t("historyLoadFailed"));
+    return;
+  }
+  if (agentRunHistoryItems.length === 0) {
+    appendAgentListEmpty(agentRunHistoryList, t("historyEmpty"));
+    return;
+  }
+
+  for (const run of agentRunHistoryItems) {
+    const card = document.createElement("article");
+    card.className = "agent-history-card";
+    const heading = document.createElement("strong");
+    heading.textContent = skillName(run.selectedSkillId) + " · " + agentRunStatusLabel(run.status);
+    const request = document.createElement("p");
+    request.className = "agent-history-request";
+    request.textContent = run.rawRequest || "";
+    const prompt = document.createElement("p");
+    prompt.className = "agent-history-prompt";
+    prompt.textContent = t("historyPrompt") + ": " + (run.optimizedPrompt || run.rawRequest || "");
+    const meta = document.createElement("span");
+    meta.className = "agent-history-meta";
+    const outputCount = Array.isArray(run.plannedOutputs) ? run.plannedOutputs.length : 0;
+    const sourceCount = Array.isArray(run.sourceObjectIds) ? run.sourceObjectIds.length : 0;
+    meta.textContent = sourceCount + " refs · " + outputCount + " outputs";
+    const actions = document.createElement("div");
+    actions.className = "agent-list-actions";
+    actions.append(
+      historyActionButton("view", run.id, t("historyOpen")),
+      historyActionButton("copy", run.id, t("historyCopy")),
+      historyActionButton("reuse", run.id, t("historyReuse"))
+    );
+    card.append(heading, request, prompt, meta, actions);
+    agentRunHistoryList.append(card);
+  }
+}
+
+function historyActionButton(action, agentRunId, label) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.historyAction = action;
+  button.dataset.agentRunId = agentRunId;
+  button.textContent = label;
+  return button;
+}
+
+async function copyAgentRunSummary(agentRunId) {
+  const run = agentRunHistoryItems.find((item) => item.id === agentRunId);
+  if (!run) throw new Error(t("historyLoadFailed"));
+  const outputs = Array.isArray(run.plannedOutputs)
+    ? run.plannedOutputs.map((output) => output.label + ": " + output.status).join(", ")
+    : "";
+  const summary = [
+    "Request: " + (run.rawRequest || ""),
+    "Prompt: " + (run.optimizedPrompt || ""),
+    "Skill: " + skillName(run.selectedSkillId),
+    "Sources: " + (run.sourceObjectIds || []).join(", "),
+    "Outputs: " + outputs
+  ].join("\n");
+  await copyTextToClipboard(summary);
+  showToast(t("historyCopied"));
+}
+async function openAgentRunFromHistory(agentRunId) {
+  const payload = await requestAgentApi("/api/agent-runs/" + encodeURIComponent(agentRunId));
+  activeAgentRun = payload.agentRun;
+  agentDraftSkillId = activeAgentRun?.selectedSkillId || agentDraftSkillId;
+  renderAgentRun();
+  setAgentTab("agent");
+}
+
+function restoreAgentRunDraft(agentRunId) {
+  const run = agentRunHistoryItems.find((item) => item.id === agentRunId);
+  const sourceIds = Array.isArray(run?.sourceObjectIds) ? run.sourceObjectIds : [];
+  const availableSources = sourceIds.filter((id) => state?.objects?.some((object) => object.id === id));
+  if (!run || availableSources.length !== sourceIds.length || availableSources.length < 1) {
+    throw new Error(t("historySourcesMissing"));
+  }
+  setLocalSelection(availableSources, { fromUser: true });
+  render();
+  if (agentRequest) {
+    agentRequest.value = run.rawRequest || "";
+    agentRequest.focus();
+    agentRequest.setSelectionRange(agentRequest.value.length, agentRequest.value.length);
+  }
+  agentDraftSkillId = run.selectedSkillId || null;
+  activeAgentRun = null;
+  renderAgentRun();
+  setAgentTab("agent");
+  showToast(t("historyDraftRestored"));
+}
+
+async function loadCanvasAssets() {
+  if (!canvasAssetList) return;
+  try {
+    const payload = await requestAgentApi("/api/assets");
+    canvasAssets = Array.isArray(payload.assets) ? payload.assets : [];
+    renderCanvasAssets();
+  } catch (error) {
+    renderCanvasAssets(error);
+    throw error;
+  }
+}
+
+function renderCanvasAssets(error = null) {
+  if (!canvasAssetList) return;
+  canvasAssetList.replaceChildren();
+  if (error) {
+    appendAgentListEmpty(canvasAssetList, error.message || t("assetsLoadFailed"));
+    return;
+  }
+  if (canvasAssets.length === 0) {
+    appendAgentListEmpty(canvasAssetList, t("assetsEmpty"));
+    return;
+  }
+
+  for (const asset of canvasAssets) {
+    const card = document.createElement("article");
+    card.className = "canvas-asset-card";
+    const preview = document.createElement("img");
+    preview.className = "canvas-asset-preview";
+    preview.src = asset.src;
+    preview.alt = "";
+    preview.loading = "lazy";
+    const content = document.createElement("div");
+    content.className = "canvas-asset-content";
+    const name = document.createElement("strong");
+    name.textContent = asset.name || asset.id;
+    const meta = document.createElement("span");
+    meta.className = "canvas-asset-meta";
+    const objectIds = Array.isArray(asset.objectIds) ? asset.objectIds : [];
+    meta.textContent = assetKindLabel(asset.kind) + " · " + (objectIds.length ? objectIds.length + " " + t("assetOnCanvas") : t("assetRemoved"));
+    const actions = document.createElement("div");
+    actions.className = "agent-list-actions";
+    const locate = assetActionButton("locate", asset.id, t("assetLocate"));
+    locate.disabled = objectIds.length === 0;
+    actions.append(
+      locate,
+      assetActionButton("insert", asset.id, t("assetInsert")),
+      assetActionButton("copy", asset.id, t("assetCopy"))
+    );
+    content.append(name, meta, actions);
+    card.append(preview, content);
+    canvasAssetList.append(card);
+  }
+}
+
+function appendAgentListEmpty(container, text) {
+  const message = document.createElement("p");
+  message.className = "agent-list-empty";
+  message.textContent = text;
+  container.append(message);
+}
+
+function assetActionButton(action, assetId, label) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.assetAction = action;
+  button.dataset.assetId = assetId;
+  button.textContent = label;
+  return button;
+}
+
+function assetKindLabel(kind) {
+  if (kind === "conversation-generation") return t("assetConversationGeneration");
+  if (kind === "generation") return t("assetGeneration");
+  if (kind === "edit") return t("assetEdit");
+  return t("assetUpload");
+}
+
+async function locateCanvasAsset(assetId) {
+  const asset = canvasAssets.find((item) => item.id === assetId);
+  const objectId = asset?.objectIds?.find((id) => state?.objects?.some((object) => object.id === id));
+  const object = state?.objects?.find((item) => item.id === objectId);
+  if (!object) throw new Error(t("assetRemoved"));
+  await selectObject(object.id, { fromUser: true });
+  frameCanvasObject(object);
+}
+
+async function insertCanvasAsset(assetId) {
+  const payload = await requestAgentApi("/api/assets/" + encodeURIComponent(assetId) + "/insert", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(withExpectedCanvasScope({}))
+  });
+  await loadState();
+  await loadCanvasAssets();
+  const object = state?.objects?.find((item) => item.id === payload.id) || payload;
+  if (object?.id) {
+    await selectObject(object.id, { fromUser: true });
+    frameCanvasObject(object);
+  }
+  showToast(t("assetInserted"));
+}
+
+async function copyCanvasAssetFileMention(assetId) {
+  const payload = await requestAgentApi("/api/assets/" + encodeURIComponent(assetId) + "/file-mention");
+  try {
+    await copyTextToClipboard(payload.fileMention);
+    showToast(t("fileMentionCopied"));
+  } catch {
+    throw new Error(t("fileMentionCopyFailed"));
+  }
+}
+function setAgentStatus(message, { error = false } = {}) {
+  if (!agentRunStatus) return;
+  agentRunStatus.textContent = message || "";
+  agentRunStatus.classList.toggle("is-error", error);
+}
+
+function agentRunStatusLabel(status) {
+  const labels = {
+    analyzing: t("agentAnalyzing"),
+    needs_clarification: t("agentStatusNeedsClarification"),
+    ready: t("agentStatusReady"),
+    running: t("agentStatusRunning"),
+    succeeded: t("agentStatusSucceeded"),
+    partial: t("agentStatusPartial"),
+    failed: t("agentStatusFailed"),
+    cancelled: t("agentStatusCancelled")
+  };
+  return labels[status] || status;
+}
+
+function skillName(skillId) {
+  const names = {
+    "generate-image": ["Generate Image", "文生图"],
+    "quick-edit": ["Quick Edit", "快速编辑"],
+    expand: ["Expand", "扩图"],
+    "remove-bg": ["Remove BG", "移除背景"],
+    "edit-text": ["Edit Text", "编辑文字"],
+    "edit-elements": ["Edit Elements", "编辑元素"],
+    "xiaohongshu-cover": ["Xiaohongshu Cover", "小红书封面"],
+    "product-marketing-set": ["Product Marketing Set", "产品营销组图"]
+  };
+  return names[skillId]?.[language === "zh" ? 1 : 0] || agentSkills.find((skill) => skill.id === skillId)?.name || skillId || "Not selected";
+}
+
+function skillDescription(skillId, fallback) {
+  const descriptions = {
+    "generate-image": ["Create a new image from your confirmed request.", "根据确认后的需求直接生成一张新图片。"],
+    "quick-edit": ["Edit selected regions while keeping the rest of the image.", "修改选中区域，并保留图片其他内容。"],
+    expand: ["Extend the image beyond its current frame.", "扩展图片当前画面之外的内容。"],
+    "remove-bg": ["Remove the image background and keep the subject.", "移除图片背景并保留主体。"],
+    "edit-text": ["Recognize and replace selected text.", "识别并替换图片中的指定文字。"],
+    "edit-elements": ["Separate image elements into editable layers.", "把图片元素拆分为可编辑图层。"],
+    "xiaohongshu-cover": ["Create a Chinese social cover from references.", "根据参考图制作中文社交平台封面。"],
+    "product-marketing-set": ["Create a coordinated product marketing image set.", "生成协调统一的产品营销组图。"]
+  };
+  return descriptions[skillId]?.[language === "zh" ? 1 : 0] || fallback;
+}
+
+async function requestAgentApi(pathname, options = {}) {
+  const response = await fetch(apiPath(pathname), options);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Agent request failed (${response.status}).`);
+  return payload;
+}
+
 async function loadState() {
   if (drag || resize || marquee || pan || drawing || annotationDraft || editingTextId || editingAnnotationId || canvasHistory.busy || isComposerActive()) return;
   const response = await fetch(apiPath("/api/state"));
@@ -1537,6 +2499,8 @@ async function loadState() {
   }
   state.selection = selectedId;
   render();
+  renderAgentSourceSelection();
+  if (activeAgentTab === "assets") loadCanvasAssets().catch(() => {});
   if (autoFocusObject) frameCanvasObject(autoFocusObject);
 }
 
@@ -3159,6 +4123,7 @@ function setLocalSelection(ids, { fromUser = true } = {}) {
   selectedId = nextIds.length === 1 ? nextIds[0] : null;
   hasUserSelection = nextIds.length > 0 && fromUser;
   if (state) state.selection = selectedId;
+  renderAgentSourceSelection();
 }
 
 function sameIdSet(left, right) {
@@ -3359,7 +4324,7 @@ function shouldStartPan(event) {
 
 function isCanvasPanBlockedTarget(target) {
   if (!(target instanceof Element)) return false;
-  return Boolean(target.closest("button, input, textarea, select, [contenteditable='true'], .selection-toolbar, .quick-edit-composer, .layer-browser-panel"));
+  return Boolean(target.closest("button, input, textarea, select, [contenteditable='true'], .selection-toolbar, .quick-edit-composer, .layer-browser-panel, .agent-workbench"));
 }
 
 function startPan(event) {
@@ -4182,31 +5147,6 @@ async function startImageJob(action, options = {}) {
   }
 }
 
-async function sendSelectedImageToChat() {
-  const object = state.objects.find((item) => item.id === selectedId);
-  if (!object || (object.type || "image") !== "image") return;
-
-  showToast(t("chatSendStarted"));
-  try {
-    const response = await fetch(apiPath("/api/chat-turn"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        action: "send-to-chat",
-        objectId: object.id
-      })
-    });
-    const result = await response.json();
-    if (!response.ok) {
-      const fallback = response.status === 409 ? t("chatNotBound") : `${labelAction("send-to-chat")} ${t("jobFailed")}`;
-      throw new Error(result.error || fallback);
-    }
-    showToast(t("chatSendDone"));
-  } catch (error) {
-    showToast(error?.message || `${labelAction("send-to-chat")} ${t("jobFailed")}`);
-  }
-}
-
 async function copySelectedFileMention() {
   const object = state.objects.find((item) => item.id === selectedId);
   if (!object || (object.type || "image") !== "image") return;
@@ -4219,8 +5159,8 @@ async function copySelectedFileMention() {
   try {
     await copyTextToClipboard(`@${filePath}`);
     showToast(t("fileMentionCopied"));
-  } catch {
-    showToast(t("fileMentionCopyFailed"));
+  } catch (error) {
+    showToast(error?.message || t("fileMentionCopyFailed"));
   }
 }
 
@@ -4815,7 +5755,7 @@ function frameSelectedImageForViewing(object) {
 
 function isShortcutEditingTarget(target) {
   if (isEditableTarget(target)) return true;
-  return Boolean(target.closest("button, [role='button'], .selection-toolbar, .quick-edit-composer, .settings-menu, .color-palette, .prompt-history-panel, .layer-browser-panel, .canvas-search"));
+  return Boolean(target.closest("button, [role='button'], .selection-toolbar, .quick-edit-composer, .settings-menu, .color-palette, .prompt-history-panel, .layer-browser-panel, .canvas-search, .agent-workbench"));
 }
 
 function canvasHistoryShortcut(event) {
@@ -4829,11 +5769,11 @@ function canvasHistoryShortcut(event) {
 }
 
 function isNativeUndoTarget(target) {
-  return isEditableTarget(target) || Boolean(target.closest(".quick-edit-composer, .prompt-history-panel, .layer-browser-panel, .canvas-search"));
+  return isEditableTarget(target) || Boolean(target.closest(".quick-edit-composer, .prompt-history-panel, .layer-browser-panel, .canvas-search, .agent-workbench"));
 }
 
 function isDeleteEditingTarget(target) {
-  if (target.closest("input, textarea, .layer-browser-panel")) return true;
+  if (target.closest("input, textarea, .layer-browser-panel, .agent-workbench")) return true;
   const editableText = target.closest(".text-content[contenteditable='true']");
   const editableAnnotation = target.closest(".annotation-label[contenteditable='true']");
   return Boolean((editableText && editingTextId === selectedId)
@@ -5072,6 +6012,12 @@ function applyLanguage() {
   document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
     element.placeholder = t(element.dataset.i18nPlaceholder);
   });
+  if (agentWorkbench) {
+    agentWorkbench.setAttribute("aria-label", t("agentWorkbench"));
+    agentWorkbench.querySelector(".agent-workbench-tabs")?.setAttribute("aria-label", t("agentWorkbench"));
+    renderAgentSourceSelection();
+    renderAgentRun();
+  }
   if (quickEditAction) {
     quickEditPrompt.placeholder = composerPlaceholder(quickEditAction);
     if (quickEditHint) quickEditHint.textContent = t("quickEditHint");
@@ -5219,7 +6165,7 @@ function pointerToWorld(event) {
 
 function shouldUseNativeWheel(target) {
   if (!(target instanceof Element)) return false;
-  return Boolean(target.closest("input, textarea, select, [contenteditable='true'], .quick-edit-composer, .canvas-search, .prompt-history-panel, .layer-browser-panel"));
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true'], .quick-edit-composer, .canvas-search, .prompt-history-panel, .layer-browser-panel, .agent-workbench"));
 }
 
 function normalizedWheelDelta(event) {

@@ -213,6 +213,25 @@ function maybeTransparentLayerChromaInstruction(transparentLayerMode) {
 }
 
 function promptForAction({ action, outputDir, userPrompt, transparentLayerMode = false }) {
+  if (action === "generate-image") {
+    return [
+      "Use the imagegen skill to create one new image from the following request.",
+      "Do not look for or assume a reference image; this is a new image generation.",
+      "Optimize for latency: do not inspect unrelated repository files and do not run broad filesystem searches.",
+      "",
+      "Task:",
+      userPrompt,
+      "",
+      `Save or copy the final image into this exact directory: ${outputDir}`,
+      "Use a descriptive filename ending in .png.",
+      "As soon as the generated PNG exists, copy it into the output directory and finish.",
+      "Do not modify source files outside that output directory.",
+      "Do not ask follow-up questions.",
+      "",
+      "Finish with a concise message containing the saved output path."
+    ].join("\n");
+  }
+
   if (action === "recognize-text") {
     const textInventoryPath = path.join(outputDir, "recognized-text.json");
     return [

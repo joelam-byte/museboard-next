@@ -59,7 +59,7 @@
     "verify:release": "node ./scripts/verify-release.mjs",
     "verify:archive": "node ./scripts/verify-release-archive.mjs",
     "build:release": "node ./scripts/build-release.mjs",
-    "test": "node --test ./test/agent-runs.test.mjs ./test/agent-brief-service.test.mjs ./test/agent-run-api.test.mjs ./test/agent-analyzer.test.mjs ./test/agent-run-execution.test.mjs ./test/agent-job-provenance.test.mjs ./test/business-skill-recipes.test.mjs ./test/business-skill-ui.test.mjs ./test/history-assets.test.mjs && npm run smoke"
+    "test": "node --test ./test/agent-runs.test.mjs ./test/agent-brief-service.test.mjs ./test/agent-run-api.test.mjs ./test/agent-analyzer.test.mjs ./test/agent-run-execution.test.mjs ./test/agent-job-provenance.test.mjs ./test/business-skill-recipes.test.mjs ./test/business-skill-ui.test.mjs ./test/history-assets.test.mjs ./test/task-canvas-persistence.test.mjs ./test/generate-image-agent-run.test.mjs && npm run smoke"
   },
   "keywords": [
     "codex",

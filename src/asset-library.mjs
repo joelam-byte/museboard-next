@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { assetIndexPathFor, assetsDirFor, statePathFor } from "./paths.mjs";
 
-const assetKinds = new Set(["upload", "generation", "edit"]);
+const assetKinds = new Set(["upload", "generation", "conversation-generation", "edit"]);
 const supportedExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif"]);
 const assetIndexLocks = new Map();
 

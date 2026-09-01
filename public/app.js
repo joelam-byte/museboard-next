@@ -171,7 +171,7 @@ const translations = {
     jobDeleteBlocked: "A running image job cannot be deleted. Wait for it to finish or fail.",
     chatSendStarted: "Sending image to bound chat...",
     chatSendDone: "Image submitted through Codex app-server. If it does not appear in the visible chat, use Copy @file.",
-    fileMentionCopied: "@file reference copied. Paste it into the Codex chat box.",
+    fileMentionCopied: "Image reference copied. Return to the chat and paste it.",
     fileMentionCopyFailed: "Could not copy @file reference.",
     chatNotBound: "Bind this canvas to a Codex thread first.",
     uploadDone: "Image uploaded.",
@@ -199,6 +199,7 @@ const translations = {
     assetsLoadFailed: "Could not load assets.",
     assetUpload: "Upload",
     assetGeneration: "Generated",
+    assetConversationGeneration: "Chat generated",
     assetEdit: "Edited",
     assetOnCanvas: "on canvas",
     assetRemoved: "removed from canvas",
@@ -207,6 +208,10 @@ const translations = {
     assetInserted: "Asset inserted on the canvas.",
     assetCopy: "Copy @file",
     agentHeading: "Image direction",
+    agentModeNew: "New image",
+    agentModeEdit: "Edit / reference",
+    agentModeNewHint: "New image mode ignores selected canvas images.",
+    agentModeEditEmpty: "Select one to three reference images, or switch to New image.",
     agentSourceEmpty: "Select one to three images on the canvas.",
     agentSourceSelected: "selected image.",
     agentSourceSelectedPlural: "selected images.",
@@ -216,7 +221,8 @@ const translations = {
     agentAnalyze: "Analyze request",
     agentConfirm: "Confirm generation",
     agentConfirmPending: "Analyze a request and resolve any clarifications first.",
-    agentConfirmReady: "Start the selected image-edit Skill.",
+    agentConfirmReady: "Start the selected Skill.",
+    agentGenerateNeedsNoSources: "New image mode must not include reference images.",
     agentConfirmSingleSource: "This confirmed V1 workflow currently uses exactly one source image.",
     agentConfirmEditText: "Edit Text keeps its existing OCR-and-replace workflow. Start it from the canvas toolbar.",
     agentConfirmUnsupported: "This Skill's multi-output execution is scheduled for a later V1 stage.",
@@ -264,8 +270,7 @@ const translations = {
       "layer-down": "Layer down",
       "group-layer-group": "Group",
       "edit-text": "Edit Text",
-      "send-to-chat": "Send to chat",
-      "copy-file-mention": "Copy @file",
+      "copy-file-mention": "Copy to chat",
       "download": "Download"
     },
     actionNames: {
@@ -279,8 +284,7 @@ const translations = {
       "layer-down": "Layer down",
       "group-layer-group": "Group",
       "edit-text": "Edit Text",
-      "send-to-chat": "Send to chat",
-      "copy-file-mention": "Copy @file",
+      "copy-file-mention": "Copy to chat",
       "download": "Download"
     },
     tools: {
@@ -402,7 +406,7 @@ const translations = {
     jobDeleteBlocked: "图片任务仍在运行，完成或失败后才能删除。",
     chatSendStarted: "正在发送图片到已绑定对话...",
     chatSendDone: "图片已通过 Codex app-server 提交；如果当前对话没有显示，请用“复制 @文件”。",
-    fileMentionCopied: "@file 引用已复制，请粘贴到 Codex 聊天框。",
+    fileMentionCopied: "已复制图片引用，请回到对话粘贴。",
     fileMentionCopyFailed: "无法复制 @file 引用。",
     chatNotBound: "请先把画布绑定到 Codex thread。",
     uploadDone: "图片已上传。",
@@ -430,6 +434,7 @@ const translations = {
     assetsLoadFailed: "无法加载资产。",
     assetUpload: "上传",
     assetGeneration: "生成",
+    assetConversationGeneration: "对话生成",
     assetEdit: "编辑",
     assetOnCanvas: "在画布上",
     assetRemoved: "已从画布移除",
@@ -438,6 +443,10 @@ const translations = {
     assetInserted: "资产已插入画布。",
     assetCopy: "复制 @文件",
     agentHeading: "图片方向",
+    agentModeNew: "新建图片",
+    agentModeEdit: "编辑 / 参考生成",
+    agentModeNewHint: "新建图片会忽略当前选中的画布图片。",
+    agentModeEditEmpty: "请选择一至三张参考图，或切换到“新建图片”。",
     agentSourceEmpty: "请在画布上选择一至三张图片。",
     agentSourceSelected: "张图片已选中。",
     agentSourceSelectedPlural: "张图片已选中。",
@@ -447,7 +456,8 @@ const translations = {
     agentAnalyze: "分析需求",
     agentConfirm: "确认生成",
     agentConfirmPending: "请先分析需求并完成必要的澄清。",
-    agentConfirmReady: "启动已选的改图技能。",
+    agentConfirmReady: "启动已选技能。",
+    agentGenerateNeedsNoSources: "新建图片不能包含参考图。",
     agentConfirmSingleSource: "当前已确认的 V1 流程仅支持一张源图片。",
     agentConfirmEditText: "编辑文字保留原有的 OCR 识别与替换流程，请从画布工具栏启动。",
     agentConfirmUnsupported: "此技能的多输出执行将在后续 V1 阶段接入。",
@@ -495,8 +505,7 @@ const translations = {
       "layer-down": "下移一层",
       "group-layer-group": "成组",
       "edit-text": "编辑文字",
-      "send-to-chat": "发送到对话",
-      "copy-file-mention": "复制 @文件",
+      "copy-file-mention": "复制到对话",
       "download": "下载"
     },
     actionNames: {
@@ -510,8 +519,7 @@ const translations = {
       "layer-down": "下移一层",
       "group-layer-group": "成组",
       "edit-text": "编辑文字",
-      "send-to-chat": "发送到对话",
-      "copy-file-mention": "复制 @文件",
+      "copy-file-mention": "复制到对话",
       "download": "下载"
     },
     tools: {
@@ -587,6 +595,7 @@ let agentRunHistoryItems = [];
 let canvasAssets = [];
 let activeAgentRun = null;
 let agentDraftSkillId = null;
+let agentInputMode = "edit";
 let activeAgentTab = "agent";
 let agentRunPollTimer = null;
 const confirmableAgentSkillIds = new Set(["quick-edit", "expand", "remove-bg", "edit-elements"]);
@@ -604,7 +613,6 @@ const singleSelectionActions = new Set([
   ...composerImageActions,
   ...immediateImageJobActions,
   "crop",
-  "send-to-chat",
   "copy-file-mention"
 ]);
 
@@ -798,10 +806,6 @@ document.addEventListener("click", (event) => {
     }
     if (action === "group-layer-group") {
       toggleSelectedLayerGroupLock();
-      return;
-    }
-    if (action === "send-to-chat") {
-      sendSelectedImageToChat();
       return;
     }
     if (action === "copy-file-mention") {
@@ -1699,6 +1703,15 @@ function initAgentWorkbench() {
   agentWorkbench.querySelectorAll("[data-agent-tab]").forEach((button) => {
     button.addEventListener("click", () => setAgentTab(button.dataset.agentTab));
   });
+  agentWorkbench.querySelectorAll("[data-agent-input-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      agentInputMode = button.dataset.agentInputMode === "new" ? "new" : "edit";
+      if (agentInputMode === "new") agentDraftSkillId = "generate-image";
+      if (agentInputMode === "edit" && agentDraftSkillId === "generate-image") agentDraftSkillId = null;
+      renderAgentSourceSelection();
+      renderAgentSkills();
+    });
+  });
   agentRequestForm?.addEventListener("submit", (event) => {
     event.preventDefault();
     submitAgentRequest().catch((error) => setAgentStatus(error?.message || t("agentAnalyzeFailed"), { error: true }));
@@ -1785,22 +1798,29 @@ function renderAgentSourceSelection() {
   if (!agentSourceSummary) return;
   const sources = selectedAgentSources();
   const count = sources.length;
-  const valid = count >= 1 && count <= 3;
+  const isNewImage = agentInputMode === "new";
+  const valid = isNewImage || (count >= 1 && count <= 3);
   agentSourceSummary.classList.toggle("has-sources", valid);
-  if (count === 0) {
-    agentSourceSummary.textContent = t("agentSourceEmpty");
+  if (isNewImage) {
+    agentSourceSummary.textContent = t("agentModeNewHint");
+  } else if (count === 0) {
+    agentSourceSummary.textContent = t("agentModeEditEmpty");
   } else if (count > 3) {
     agentSourceSummary.textContent = `${count} ${t("agentSourceTooMany")}`;
   } else {
     agentSourceSummary.textContent = `${count} ${t(count === 1 ? "agentSourceSelected" : "agentSourceSelectedPlural")}`;
   }
   if (agentAnalyzeButton) agentAnalyzeButton.disabled = !valid;
+  agentWorkbench?.querySelectorAll("[data-agent-input-mode]").forEach((button) => {
+    button.setAttribute("aria-checked", String(button.dataset.agentInputMode === agentInputMode));
+  });
 }
 
 async function submitAgentRequest() {
   const sources = selectedAgentSources();
   const rawRequest = agentRequest?.value.trim() || "";
-  if (sources.length < 1 || sources.length > 3) throw new Error(t("agentSourcesInvalid"));
+  const effectiveSources = agentInputMode === "new" ? [] : sources;
+  if (agentInputMode !== "new" && (effectiveSources.length < 1 || effectiveSources.length > 3)) throw new Error(t("agentSourcesInvalid"));
   if (!rawRequest) throw new Error(t("agentRequestRequired"));
   agentAnalyzeButton.disabled = true;
   setAgentStatus(t("agentAnalyzing"));
@@ -1810,7 +1830,7 @@ async function submitAgentRequest() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         id: agentRunId(),
-        sourceObjectIds: sources.map((source) => source.id),
+        sourceObjectIds: effectiveSources.map((source) => source.id),
         rawRequest
       })
     });
@@ -1996,6 +2016,9 @@ function renderAgentConfirmButton() {
 
 function agentConfirmUnavailableReason(agentRun) {
   if (!agentRun || agentRun.status !== "ready") return t("agentConfirmPending");
+  if (agentRun.selectedSkillId === "generate-image") {
+    return agentRun.sourceObjectIds.length === 0 ? "" : t("agentGenerateNeedsNoSources");
+  }
   if (isBusinessAgentSkill(agentRun.selectedSkillId)) {
     if (agentRun.sourceObjectIds.length < 1 || agentRun.sourceObjectIds.length > 3) return t("agentSourcesInvalid");
     return businessSkillInputsForRun(agentRun)?.error || "";
@@ -2158,15 +2181,19 @@ function renderAgentSkills() {
   if (!agentSkillList) return;
   agentSkillList.replaceChildren();
   for (const skill of agentSkills) {
+    const availableInMode = agentInputMode === "new"
+      ? skill.id === "generate-image"
+      : skill.id !== "generate-image";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "agent-skill-card";
     button.dataset.skillId = skill.id;
+    button.disabled = !availableInMode;
     button.classList.toggle("active", skill.id === (activeAgentRun?.selectedSkillId || agentDraftSkillId));
     const name = document.createElement("strong");
-    name.textContent = skill.name;
+    name.textContent = skillName(skill.id);
     const description = document.createElement("span");
-    description.textContent = skill.description;
+    description.textContent = skillDescription(skill.id, skill.description);
     button.append(name, description);
     agentSkillList.append(button);
   }
@@ -2350,6 +2377,7 @@ function assetActionButton(action, assetId, label) {
 }
 
 function assetKindLabel(kind) {
+  if (kind === "conversation-generation") return t("assetConversationGeneration");
   if (kind === "generation") return t("assetGeneration");
   if (kind === "edit") return t("assetEdit");
   return t("assetUpload");
@@ -2410,7 +2438,31 @@ function agentRunStatusLabel(status) {
 }
 
 function skillName(skillId) {
-  return agentSkills.find((skill) => skill.id === skillId)?.name || skillId || "Not selected";
+  const names = {
+    "generate-image": ["Generate Image", "文生图"],
+    "quick-edit": ["Quick Edit", "快速编辑"],
+    expand: ["Expand", "扩图"],
+    "remove-bg": ["Remove BG", "移除背景"],
+    "edit-text": ["Edit Text", "编辑文字"],
+    "edit-elements": ["Edit Elements", "编辑元素"],
+    "xiaohongshu-cover": ["Xiaohongshu Cover", "小红书封面"],
+    "product-marketing-set": ["Product Marketing Set", "产品营销组图"]
+  };
+  return names[skillId]?.[language === "zh" ? 1 : 0] || agentSkills.find((skill) => skill.id === skillId)?.name || skillId || "Not selected";
+}
+
+function skillDescription(skillId, fallback) {
+  const descriptions = {
+    "generate-image": ["Create a new image from your confirmed request.", "根据确认后的需求直接生成一张新图片。"],
+    "quick-edit": ["Edit selected regions while keeping the rest of the image.", "修改选中区域，并保留图片其他内容。"],
+    expand: ["Extend the image beyond its current frame.", "扩展图片当前画面之外的内容。"],
+    "remove-bg": ["Remove the image background and keep the subject.", "移除图片背景并保留主体。"],
+    "edit-text": ["Recognize and replace selected text.", "识别并替换图片中的指定文字。"],
+    "edit-elements": ["Separate image elements into editable layers.", "把图片元素拆分为可编辑图层。"],
+    "xiaohongshu-cover": ["Create a Chinese social cover from references.", "根据参考图制作中文社交平台封面。"],
+    "product-marketing-set": ["Create a coordinated product marketing image set.", "生成协调统一的产品营销组图。"]
+  };
+  return descriptions[skillId]?.[language === "zh" ? 1 : 0] || fallback;
 }
 
 async function requestAgentApi(pathname, options = {}) {
@@ -5095,31 +5147,6 @@ async function startImageJob(action, options = {}) {
   }
 }
 
-async function sendSelectedImageToChat() {
-  const object = state.objects.find((item) => item.id === selectedId);
-  if (!object || (object.type || "image") !== "image") return;
-
-  showToast(t("chatSendStarted"));
-  try {
-    const response = await fetch(apiPath("/api/chat-turn"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        action: "send-to-chat",
-        objectId: object.id
-      })
-    });
-    const result = await response.json();
-    if (!response.ok) {
-      const fallback = response.status === 409 ? t("chatNotBound") : `${labelAction("send-to-chat")} ${t("jobFailed")}`;
-      throw new Error(result.error || fallback);
-    }
-    showToast(t("chatSendDone"));
-  } catch (error) {
-    showToast(error?.message || `${labelAction("send-to-chat")} ${t("jobFailed")}`);
-  }
-}
-
 async function copySelectedFileMention() {
   const object = state.objects.find((item) => item.id === selectedId);
   if (!object || (object.type || "image") !== "image") return;
@@ -5132,8 +5159,8 @@ async function copySelectedFileMention() {
   try {
     await copyTextToClipboard(`@${filePath}`);
     showToast(t("fileMentionCopied"));
-  } catch {
-    showToast(t("fileMentionCopyFailed"));
+  } catch (error) {
+    showToast(error?.message || t("fileMentionCopyFailed"));
   }
 }
 

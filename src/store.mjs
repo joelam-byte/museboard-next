@@ -804,7 +804,7 @@ export async function reinsertStoredAsset(projectDir, asset, options = {}) {
 }
 
 function normalizeAssetKind(value) {
-  return ["upload", "generation", "edit"].includes(value) ? value : "upload";
+  return ["upload", "generation", "conversation-generation", "edit"].includes(value) ? value : "upload";
 }
 
 function shouldDedupeImage(input = {}) {
@@ -953,6 +953,36 @@ export async function addJobPlaceholder(projectDir, input, options = {}) {
         ...state,
         objects: [...shiftedObjects, object]
       },
+      value: object
+    };
+  });
+}
+
+export async function addGenerationJobPlaceholder(projectDir, input, options = {}) {
+  return mutateState(projectDir, options, (state) => {
+    const width = sanitizeDimension(input.width);
+    const height = sanitizeDimension(input.height);
+    const zoom = state.viewport.zoom || 1;
+    const object = {
+      id: input.id || `job_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`,
+      type: "job",
+      name: sanitizeString(input.name, "Generating image"),
+      action: sanitizeString(input.action, "generate-image", 80),
+      status: sanitizeString(input.status, "running", 80),
+      ...lightweightProvenanceFields(input),
+      layoutMode: "generation",
+      src: null,
+      assetPath: null,
+      x: Number.isFinite(input.x) ? sanitizeCoordinate(input.x) : Math.round((-state.viewport.x / zoom) + 96),
+      y: Number.isFinite(input.y) ? sanitizeCoordinate(input.y) : Math.round((-state.viewport.y / zoom) + 96),
+      width,
+      height,
+      naturalWidth: null,
+      naturalHeight: null,
+      createdAt: new Date().toISOString()
+    };
+    return {
+      state: { ...state, objects: [...state.objects, object] },
       value: object
     };
   });

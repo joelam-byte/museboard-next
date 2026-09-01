@@ -20,6 +20,7 @@ import { addImage, readState } from "../src/store.mjs";
 
 const pngOne = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 const expectedSkillIds = [
+  "generate-image",
   "quick-edit",
   "expand",
   "remove-bg",
@@ -79,7 +80,7 @@ function initialRun(overrides = {}) {
   }, { now: "2026-08-29T00:00:00.000Z" });
 }
 
-test("stable skill descriptors expose exactly the seven approved ids", () => {
+test("stable skill descriptors expose the approved ids", () => {
   assert.deepEqual(SKILL_IDS, expectedSkillIds);
   assert.deepEqual(SKILL_DESCRIPTORS.map((descriptor) => descriptor.id), expectedSkillIds);
   for (const descriptor of SKILL_DESCRIPTORS) assert.equal(validateSkillDescriptor(descriptor), descriptor);
@@ -117,7 +118,7 @@ test("business Skill descriptors expose their field recipes and fixed output slo
   assert.equal(productSet.clarificationRules[0], "Ask only when a required marketing field would materially change the output.");
 });
 
-test("AgentRun accepts one to three unique source object ids and rejects other counts", () => {
+test("AgentRun accepts zero to three unique source object ids and rejects larger counts", () => {
   assert.deepEqual(Object.keys(initialRun()), [
     "id",
     "canvasId",
@@ -139,10 +140,7 @@ test("AgentRun accepts one to three unique source object ids and rejects other c
   ]);
   assert.deepEqual(initialRun().sourceObjectIds, ["image-001"]);
   assert.deepEqual(initialRun({ sourceObjectIds: ["one", "two", "three"] }).sourceObjectIds, ["one", "two", "three"]);
-  assert.throws(
-    () => initialRun({ sourceObjectIds: [] }),
-    (error) => error.code === "agent-run-validation" && error.message.includes("sourceObjectIds")
-  );
+  assert.deepEqual(initialRun({ sourceObjectIds: [] }).sourceObjectIds, []);
   assert.throws(
     () => initialRun({ sourceObjectIds: ["one", "two", "three", "four"] }),
     (error) => error.code === "agent-run-validation" && error.message.includes("sourceObjectIds")

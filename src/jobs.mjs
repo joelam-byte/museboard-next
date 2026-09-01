@@ -7,12 +7,13 @@ import { promisify } from "node:util";
 import { PNG } from "pngjs";
 import { collectRecentImages } from "./collector.mjs";
 import { jobsDirFor, pluginRoot } from "./paths.mjs";
-import { addJobPlaceholder, deleteObject, readState, transformState, updateObject } from "./store.mjs";
+import { addGenerationJobPlaceholder, addJobPlaceholder, deleteObject, readState, transformState, updateObject } from "./store.mjs";
 import { startCodexImageJob, stopCodexProcess } from "./codex-runner.mjs";
 import { recognizeTextLocal } from "./local-ocr.mjs";
 import { createOperationLease } from "./operation-leases.mjs";
 import {
   prepareAgentRunForJob,
+  prepareAgentRunForGenerationJob,
   recordAgentRunJobFailure,
   recordAgentRunJobSuccess
 } from "./agent-run-execution.mjs";
@@ -165,6 +166,98 @@ export async function createImageJob(projectDir, input, options = {}) {
       await operationLease.release();
     });
 
+  return publicJob(job);
+}
+
+export async function createGenerationJob(projectDir, input, options = {}) {
+  const canvasId = normalizeCanvasId(options.canvasId);
+  const storeOptions = { canvasId };
+  const action = String(input?.action || "");
+  const prompt = typeof input?.prompt === "string" ? input.prompt.trim().slice(0, 4000) : "";
+  if (action !== "generate-image") {
+    const error = new Error(`Unsupported generated image action: ${action || "(missing)"}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!prompt) {
+    const error = new Error("Generate Image requires a confirmed prompt.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const output = input?.output || {};
+  const id = `job_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+  const jobDir = path.join(jobsDirFor(projectDir, canvasId), id);
+  const startedAtMs = Date.now();
+  const job = {
+    id,
+    action,
+    projectDir,
+    canvasId,
+    status: "queued",
+    objectId: null,
+    sourceObjectId: null,
+    sourceObjectIds: [],
+    sourceImagePath: null,
+    imagePath: null,
+    expandOptions: null,
+    expandInputPath: null,
+    transparentLayerMode: false,
+    quickEditAnnotations: null,
+    annotationSessionId: null,
+    annotatedImagePath: null,
+    annotationManifestPath: null,
+    prompt,
+    outputDir: path.join(jobDir, "outputs"),
+    logPath: path.join(jobDir, "codex.log"),
+    textInventoryPath: null,
+    createdAt: new Date(startedAtMs).toISOString(),
+    startedAt: null,
+    completedAt: null,
+    durationMs: null,
+    outputDetectedAt: null,
+    detectedOutputPath: null,
+    codexSessionId: null,
+    imported: [],
+    placeholder: null,
+    placeholderId: null,
+    backgroundCompletionRunning: false,
+    backgroundCompletionPromise: null,
+    error: null
+  };
+  const agentRun = await prepareAgentRunForGenerationJob(projectDir, {
+    canvasId: agentRunCanvasIdForJob(canvasId),
+    agentRunId: input.agentRunId,
+    jobId: job.id,
+    action
+  });
+  job.agentRunId = agentRun.id;
+  job.agentRunCanvasId = agentRun.canvasId;
+  const operationLease = await createOperationLease("image-job", { action, projectDir, canvasId });
+  try {
+    const placeholder = await addGenerationJobPlaceholder(projectDir, {
+      id: `${id}_placeholder`,
+      action,
+      status: "running",
+      name: actionLabel(action),
+      agentRunId: job.agentRunId,
+      jobId: job.id,
+      width: generationDisplayDimension(output.width, output.height, "width"),
+      height: generationDisplayDimension(output.width, output.height, "height")
+    }, storeOptions);
+    job.placeholder = placeholder;
+    job.placeholderId = placeholder.id;
+  } catch (error) {
+    await recordAgentRunFailureBestEffort(projectDir, job, error);
+    await operationLease.release();
+    throw error;
+  }
+  jobs.set(id, job);
+  runJob(projectDir, job, startedAtMs)
+    .catch((error) => markFailed(projectDir, job, error).catch(() => {}))
+    .finally(async () => {
+      await job.backgroundCompletionPromise?.catch(() => {});
+      await operationLease.release();
+    });
   return publicJob(job);
 }
 
@@ -1964,9 +2057,10 @@ function buildEditTextPrompt(changes) {
 }
 
 function assetKindForJob(job) {
-  return businessImageActions.has(job?.action) ? "generation" : "edit";
+  return businessImageActions.has(job?.action) || job?.action === "generate-image" ? "generation" : "edit";
 }
 function actionLabel(action) {
+  if (action === "generate-image") return "Generate Image";
   if (action === "quick-edit") return "Quick Edit";
   if (action === "expand") return "Expand";
   if (action === "edit-text") return "Edit Text";
@@ -1975,6 +2069,13 @@ function actionLabel(action) {
   if (action === "xiaohongshu-cover") return "Xiaohongshu Cover";
   if (action === "product-marketing-set") return "Product Marketing";
   return "Image job";
+}
+
+function generationDisplayDimension(width, height, axis) {
+  const safeWidth = Number.isFinite(width) && width > 0 ? width : 1024;
+  const safeHeight = Number.isFinite(height) && height > 0 ? height : 1024;
+  const scale = Math.min(1, 420 / Math.max(safeWidth, safeHeight));
+  return Math.max(1, Math.round((axis === "width" ? safeWidth : safeHeight) * scale));
 }
 
 async function updatePlaceholder(projectDir, job, status) {

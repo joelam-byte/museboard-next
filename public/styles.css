@@ -124,6 +124,18 @@ button {
   margin-top: 18px;
 }
 
+.agent-input-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.agent-input-modes button[aria-checked="true"] {
+  background: #202124;
+  border-color: #202124;
+  color: #fff;
+}
+
 .agent-request-form label,
 .agent-clarification label {
   color: #4f545c;
@@ -2419,13 +2431,8 @@ button {
   grid-row: 1;
 }
 
-.selection-toolbar.has-layer-group-actions [data-action="send-to-chat"] {
-  grid-column: 7;
-  grid-row: 1;
-}
-
 .selection-toolbar.has-layer-group-actions [data-action="copy-file-mention"] {
-  grid-column: 8;
+  grid-column: 7;
   grid-row: 1;
 }
 

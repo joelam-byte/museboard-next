@@ -61,6 +61,49 @@ export async function prepareAgentRunForJob(
   });
 }
 
+export async function prepareAgentRunForGenerationJob(
+  projectDir,
+  { canvasId, agentRunId, jobId, action = "generate-image" },
+  { now = new Date().toISOString() } = {}
+) {
+  return updateAgentRun(projectDir, { canvasId, agentRunId }, (current) => {
+    if (current.status === "running" && current.childJobIds.includes(jobId)) return current;
+    if (current.status !== "ready") {
+      throw new AgentRunExecutionError(`AgentRun cannot start a generated image while status is ${current.status}.`, {
+        code: "agent-run-generation-state"
+      });
+    }
+    if (action !== "generate-image" || current.selectedSkillId !== action) {
+      throw new AgentRunExecutionError("Generated image action must match the selected generate-image Skill.", {
+        code: "agent-run-generation-skill-mismatch",
+        statusCode: 400
+      });
+    }
+    if (current.sourceObjectIds.length !== 0) {
+      throw new AgentRunExecutionError("The generate-image Skill must not include canvas reference images.", {
+        code: "agent-run-generation-source-mismatch",
+        statusCode: 400
+      });
+    }
+    if (current.plannedOutputs.length !== 1) {
+      throw new AgentRunExecutionError("The generate-image Skill requires exactly one planned output.", {
+        code: "agent-run-generation-output-count",
+        statusCode: 400
+      });
+    }
+    return transitionAgentRun(current, "running", {
+      childJobIds: [jobId],
+      plannedOutputs: current.plannedOutputs.map((output) => ({
+        ...output,
+        status: "running",
+        jobId,
+        outputObjectIds: [],
+        error: null
+      }))
+    }, { now });
+  });
+}
+
 export async function recordAgentRunJobSuccess(
   projectDir,
   { canvasId, agentRunId, jobId, outputObjectIds },

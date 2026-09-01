@@ -1,4 +1,5 @@
 const skillIds = [
+  "generate-image",
   "quick-edit",
   "expand",
   "remove-bg",
@@ -11,6 +12,18 @@ const skillIds = [
 export const SKILL_IDS = Object.freeze([...skillIds]);
 
 export const SKILL_DESCRIPTORS = Object.freeze([
+  skillDescriptor("generate-image", "Generate Image", "Create a new image from a confirmed request without a canvas reference.", 0, 0, 1, 1, {
+    category: "generation",
+    inputRules: [
+      "Use no source image; generate entirely from the confirmed request.",
+      "Generate only after the user explicitly confirms the completed brief."
+    ],
+    outputSpecs: [
+      outputSpec("image", "Generated image", "A new image created without a canvas reference.", 1024, 1024, "1:1")
+    ],
+    clarificationRules: ["Ask only when a missing requirement would materially change the generated image."],
+    backendAction: "generate-image"
+  }),
   skillDescriptor("quick-edit", "Quick Edit", "Edit selected regions while preserving the rest of the source image.", 1, 1, 1, 1),
   skillDescriptor("expand", "Expand", "Extend a source image beyond its current bounds.", 1, 1, 1, 1),
   skillDescriptor("remove-bg", "Remove BG", "Remove the source image background and preserve the foreground subject.", 1, 1, 1, 1),
@@ -152,7 +165,7 @@ export function validateSkillDescriptor(value) {
   validateOutputSpecs(value.outputSpecs);
   assertStringArray(value.clarificationRules, "SkillDescriptor.clarificationRules", { max: 20, itemMax: 1000 });
   assertIdentifier(value.backendAction, "SkillDescriptor.backendAction");
-  validateCountRange(value.sourceImageCount, "SkillDescriptor.sourceImageCount", { max: 3 });
+  validateCountRange(value.sourceImageCount, "SkillDescriptor.sourceImageCount", { min: 0, max: 3 });
   validateCountRange(value.outputCount, "SkillDescriptor.outputCount", { max: 16 });
   if (value.requiresConfirmation !== true) {
     invalid("must be true", "SkillDescriptor.requiresConfirmation");
@@ -281,7 +294,7 @@ export function validateAgentRun(value) {
   ]);
   assertIdentifier(value.id, "AgentRun.id");
   assertIdentifier(value.canvasId, "AgentRun.canvasId");
-  assertIdentifierArray(value.sourceObjectIds, "AgentRun.sourceObjectIds", { min: 1, max: 3 });
+  assertIdentifierArray(value.sourceObjectIds, "AgentRun.sourceObjectIds", { min: 0, max: 3, allowEmpty: true });
   assertNonEmptyString(value.rawRequest, "AgentRun.rawRequest", 20_000);
   assertNullableSkillId(value.recommendedSkillId, "AgentRun.recommendedSkillId");
   assertNullableSkillId(value.selectedSkillId, "AgentRun.selectedSkillId");
@@ -420,9 +433,9 @@ function validateOutputSpecs(value) {
   assertUniqueValues(value.map((output) => output.id), "SkillDescriptor.outputSpecs", "output ids");
 }
 
-function validateCountRange(value, path, { max }) {
+function validateCountRange(value, path, { min = 1, max }) {
   assertStrictObject(value, path, ["min", "max"]);
-  if (!Number.isInteger(value.min) || value.min < 1 || value.min > max) invalid(`min must be an integer from 1 to ${max}`, path);
+  if (!Number.isInteger(value.min) || value.min < min || value.min > max) invalid(`min must be an integer from ${min} to ${max}`, path);
   if (!Number.isInteger(value.max) || value.max < value.min || value.max > max) invalid(`max must be an integer from min to ${max}`, path);
 }
 

@@ -167,12 +167,6 @@
                 </svg>
                 <span>Edit Text</span>
               </button>
-              <button class="icon-only" data-action="send-to-chat" data-tooltip="Send to chat" title="Send to chat" aria-label="Send to chat">
-                <svg class="context-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M14.536 21.686a.5.5 0 0 0 .937 -.024l6.5 -19a.496 .496 0 0 0 -.635 -.635l-19 6.5a.5 .5 0 0 0 -.024 .937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
-                  <path d="m21.854 2.147 -10.94 10.939" />
-                </svg>
-              </button>
               <button class="icon-only" data-action="copy-file-mention" data-tooltip="Copy @file" title="Copy @file" aria-label="Copy @file">
                 <svg class="context-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <circle cx="12" cy="12" r="4" />
@@ -355,6 +349,10 @@
             <p id="agentSourceSummary" class="agent-source-summary" data-i18n="agentSourceEmpty">Select one to three images on the canvas.</p>
           </div>
           <form id="agentRequestForm" class="agent-request-form">
+            <div class="agent-input-modes" role="radiogroup" aria-label="Image request mode">
+              <button type="button" data-agent-input-mode="new" role="radio" aria-checked="false" data-i18n="agentModeNew">New image</button>
+              <button type="button" data-agent-input-mode="edit" role="radio" aria-checked="true" data-i18n="agentModeEdit">Edit / reference</button>
+            </div>
             <label for="agentRequest" data-i18n="agentRequestLabel">What would you like to make or change?</label>
             <textarea id="agentRequest" rows="5" data-i18n-placeholder="agentRequestPlaceholder" placeholder="Describe the outcome, what to preserve, and the output you need."></textarea>
             <button id="agentAnalyzeButton" type="submit" data-i18n="agentAnalyze">Analyze request</button>

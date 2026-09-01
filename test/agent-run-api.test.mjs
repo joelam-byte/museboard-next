@@ -56,7 +56,7 @@ test("AgentRun API returns a validated brief without creating an image job", asy
     assert.equal(skillsResponse.status, 200);
     const skills = await skillsResponse.json();
     assert.deepEqual(skills.skills.map((skill) => skill.id), [
-      "quick-edit", "expand", "remove-bg", "edit-text", "edit-elements", "xiaohongshu-cover", "product-marketing-set"
+      "generate-image", "quick-edit", "expand", "remove-bg", "edit-text", "edit-elements", "xiaohongshu-cover", "product-marketing-set"
     ]);
 
     const imageResponse = await fetch(`${base}api/images${search}`, {

@@ -5,7 +5,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { collectRecentImages, defaultGeneratedImagesRoot, generatedImagesDirForThread } from "./collector.mjs";
 import { hasActiveChatOperations, sendImageToBoundChat, sendMentionToBoundChat, stopActiveChatOperations } from "./codex-chat.mjs";
-import { createBusinessImageJob, createImageJob, createTextRecognitionJob, getActivePlaceholderIds, getIgnoredGeneratedImagePaths, getImageJob, getTextRecognitionJob, hasActiveCanvasJobs, hasRunningImageJobs, submitTextRecognitionEdit } from "./jobs.mjs";
+import { createBusinessImageJob, createGenerationJob, createImageJob, createTextRecognitionJob, getActivePlaceholderIds, getIgnoredGeneratedImagePaths, getImageJob, getTextRecognitionJob, hasActiveCanvasJobs, hasRunningImageJobs, submitTextRecognitionEdit } from "./jobs.mjs";
 import { analyzeAgentRun, answerAgentRunClarifications, selectAgentRunSkill } from "./agent-brief-service.mjs";
 import { createCodexAgentAnalyzer } from "./agent-analyzer.mjs";
 import { AgentRunExecutionError, recordAgentRunJobFailure, retryAgentRunJobs, startAgentRunBatch } from "./agent-run-execution.mjs";
@@ -17,6 +17,7 @@ import { assetsDirFor, projectRegistryPath, publicDir, runtimePathFor } from "./
 import { exportLayerGroupPsd } from "./psd-export.mjs";
 import { addImage, addObject, deleteObject, deleteObjects, ensureProjectStore, markStaleJobPlaceholders, promptHistory, readState, reorderLayerGroupLayer, restoreObjects, searchObjects, setLayerGroupOrder, updateObject, updateObjects, updateProjectMeta, updateSelection, updateViewport, versionGroups } from "./store.mjs";
 import { canvasIdForThread, normalizeThreadId } from "./runtime.mjs";
+import { migrateLegacyTaskCanvas } from "./legacy-canvas-migration.mjs";
 import { appUpdateStatus, updateApp } from "./updater.mjs";
 import { APP_VERSION } from "./version.mjs";
 
@@ -36,14 +37,14 @@ const contentTypes = {
 const defaultMaxJsonBodyBytes = 32 * 1024 * 1024;
 const maxQueryLimit = 100;
 
-export async function createServer({ projectDir, host = "127.0.0.1", port = 43217, autoCollect = true, chatThreadId = null, autoCollectIntervalMs = 5000, autoCollectWatchDebounceMs = 250, maxJsonBodyBytes = defaultMaxJsonBodyBytes, persistentRegistryPath = projectRegistryPath(), generatedImagesRoot = defaultGeneratedImagesRoot(), hasActiveJobs = hasActiveCanvasJobs, agentAnalyzer = null, imageJobFactory = createImageJob, businessImageJobFactory = createBusinessImageJob } = {}) {
-  const registry = createProjectRegistry({ host, port, autoCollect, autoCollectIntervalMs, autoCollectWatchDebounceMs, maxJsonBodyBytes, persistentRegistryPath, generatedImagesRoot, hasActiveJobs });
+export async function createServer({ projectDir, host = "127.0.0.1", port = 43217, autoCollect = true, chatThreadId = null, autoCollectIntervalMs = 5000, autoCollectWatchDebounceMs = 250, maxJsonBodyBytes = defaultMaxJsonBodyBytes, persistentRegistryPath = projectRegistryPath(), generatedImagesRoot = defaultGeneratedImagesRoot(), legacyCanvasRoot = null, hasActiveJobs = hasActiveCanvasJobs, agentAnalyzer = null, imageJobFactory = createImageJob, generationJobFactory = createGenerationJob, businessImageJobFactory = createBusinessImageJob } = {}) {
+  const registry = createProjectRegistry({ host, port, autoCollect, autoCollectIntervalMs, autoCollectWatchDebounceMs, maxJsonBodyBytes, persistentRegistryPath, generatedImagesRoot, legacyCanvasRoot, hasActiveJobs });
   const initialProject = await registerProject(registry, projectDir, { autoCollect, chatThreadId });
   await restorePersistedProjects(registry);
 
   const server = http.createServer(async (request, response) => {
     try {
-      await handleRequest(request, response, { registry, server, agentAnalyzer, imageJobFactory, businessImageJobFactory });
+      await handleRequest(request, response, { registry, server, agentAnalyzer, imageJobFactory, generationJobFactory, businessImageJobFactory });
     } catch (error) {
       const status = error.statusCode || 500;
       sendJson(response, status, {
@@ -202,7 +203,7 @@ async function handleRequest(request, response, context) {
     assertExpectedCanvasScope(project, body);
     const result = await runMaintenanceSensitiveOperation(
       context.registry,
-      () => confirmAgentRun(projectDir, project, agentRunConfirmMatch[1], context.imageJobFactory, context.businessImageJobFactory, body.skillInputs)
+      () => confirmAgentRun(projectDir, project, agentRunConfirmMatch[1], context.imageJobFactory, context.generationJobFactory, context.businessImageJobFactory, body.skillInputs)
     );
     return sendJson(response, 202, result);
   }
@@ -649,7 +650,7 @@ function parsePositiveIntegerQueryParam(searchParams, name, defaultValue, fallba
   return Math.min(maxQueryLimit, Math.max(1, Math.round(parsed)));
 }
 
-function createProjectRegistry({ host, port, autoCollect, autoCollectIntervalMs, autoCollectWatchDebounceMs, maxJsonBodyBytes, persistentRegistryPath, generatedImagesRoot, hasActiveJobs }) {
+function createProjectRegistry({ host, port, autoCollect, autoCollectIntervalMs, autoCollectWatchDebounceMs, maxJsonBodyBytes, persistentRegistryPath, generatedImagesRoot, legacyCanvasRoot, hasActiveJobs }) {
   return {
     host,
     port,
@@ -659,6 +660,7 @@ function createProjectRegistry({ host, port, autoCollect, autoCollectIntervalMs,
     maxJsonBodyBytes,
     persistentRegistryPath,
     generatedImagesRoot: path.resolve(generatedImagesRoot),
+    legacyCanvasRoot: legacyCanvasRoot ? path.resolve(legacyCanvasRoot) : null,
     baseUrl: `http://${host}:${port}/`,
     pid: process.pid,
     instanceId: crypto.randomUUID(),
@@ -727,6 +729,14 @@ async function registerProject(registry, projectDir, { autoCollect = true, chatT
   const resolvedProjectDir = path.resolve(projectDir || process.cwd());
   const normalizedThreadId = normalizeThreadId(chatThreadId);
   const canvasId = normalizeThreadId(explicitCanvasId) || canvasIdForThread(normalizedThreadId);
+  if (normalizedThreadId && canvasId) {
+    await migrateLegacyTaskCanvas({
+      projectDir: resolvedProjectDir,
+      threadId: normalizedThreadId,
+      canvasId,
+      ...(registry.legacyCanvasRoot ? { legacyRoot: registry.legacyCanvasRoot } : {})
+    });
+  }
   await ensureProjectStore(resolvedProjectDir, { canvasId });
   const id = projectIdFor(resolvedProjectDir, canvasId);
   const existing = registry.projects.get(id);
@@ -765,8 +775,9 @@ async function restorePersistedProjects(registry) {
     if (!entry || typeof entry !== "object") continue;
     if (typeof entry.projectDir !== "string" || !path.isAbsolute(entry.projectDir)) continue;
     if (!await directoryExists(entry.projectDir)) continue;
+    const isBoundTask = Boolean(normalizeThreadId(entry.chatThreadId));
     await registerProject(registry, entry.projectDir, {
-      autoCollect: registry.autoCollect && entry.autoCollect !== false,
+      autoCollect: registry.autoCollect && (isBoundTask || entry.autoCollect !== false),
       chatThreadId: entry.chatThreadId || null,
       canvasId: entry.canvasId || null,
       registeredAt: typeof entry.registeredAt === "string" ? entry.registeredAt : null
@@ -921,6 +932,7 @@ async function runAutoCollectorPass(project, registry) {
       excludePaths: getIgnoredGeneratedImagePaths(jobScopeFor(project)),
       canvasId: project.canvasId,
       threadId: project.chatThreadId,
+      assetKind: "conversation-generation",
       generatedImagesRoot: registry.generatedImagesRoot
     });
     project.collectSinceMs = Math.max(project.collectSinceMs, scanStartedAt);
@@ -1088,7 +1100,7 @@ function agentAnalyzerFor(context, projectDir) {
 const confirmableImageSkillIds = new Set(["quick-edit", "expand", "remove-bg", "edit-elements"]);
 const businessImageSkillIds = new Set(["xiaohongshu-cover", "product-marketing-set"]);
 
-async function confirmAgentRun(projectDir, project, agentRunId, imageJobFactory, businessImageJobFactory, skillInputs) {
+async function confirmAgentRun(projectDir, project, agentRunId, imageJobFactory, generationJobFactory, businessImageJobFactory, skillInputs) {
   const canvasId = agentRunCanvasIdFor(project);
   const current = await readAgentRun(projectDir, { canvasId, agentRunId });
   if (current.status === "running") {
@@ -1107,6 +1119,16 @@ async function confirmAgentRun(projectDir, project, agentRunId, imageJobFactory,
   }
   if (isBusinessImageSkill(current.selectedSkillId)) {
     return startBusinessAgentRun(projectDir, project, current, businessImageJobFactory, skillInputs);
+  }
+  if (current.selectedSkillId === "generate-image") {
+    const imageJob = await generationJobFactory(projectDir, {
+      action: "generate-image",
+      prompt: current.optimizedPrompt,
+      agentRunId: current.id,
+      output: current.plannedOutputs[0]
+    }, storeOptionsFor(project));
+    const agentRun = await readAgentRun(projectDir, { canvasId, agentRunId });
+    return { agentRun, imageJob };
   }
   if (current.selectedSkillId === "edit-text") {
     const error = new Error("Edit Text confirmation requires its existing OCR workflow. Start Edit Text from the canvas toolbar.");

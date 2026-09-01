@@ -14,6 +14,7 @@ import { addImage, addObject } from "../src/store.mjs";
 
 const pngOne = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 const expectedSkillIds = [
+  "generate-image",
   "quick-edit",
   "expand",
   "remove-bg",

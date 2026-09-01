@@ -18,7 +18,6 @@ const expectedSingleImageActions = [
   "crop",
   "edit-elements",
   "edit-text",
-  "send-to-chat",
   "copy-file-mention",
   "download"
 ];
@@ -253,6 +252,17 @@ async function assertAgentWorkbench(page) {
   await page.locator("[data-settings-row='language']").click();
   await page.locator("[data-language='zh']").click();
   await page.waitForFunction(() => document.querySelector("#agentPanel h2")?.textContent === "图片方向");
+  await page.locator('[data-agent-input-mode="new"]').click();
+  await page.waitForFunction(() => document.querySelector("#agentSourceSummary")?.textContent?.includes("忽略"));
+  const newImageMode = await page.evaluate(() => ({
+    modeLabel: document.querySelector('[data-agent-input-mode="new"]')?.textContent?.trim(),
+    analyzeDisabled: document.querySelector("#agentAnalyzeButton")?.disabled,
+    enabledSkills: Array.from(document.querySelectorAll("[data-skill-id]")).filter((button) => !button.disabled).map((button) => button.dataset.skillId)
+  }));
+  assertEqual(newImageMode.modeLabel, "新建图片", "Chinese mode selector should label the no-reference workflow");
+  assertEqual(newImageMode.analyzeDisabled, false, "New image mode should allow analysis without a selected source image");
+  assertDeepEqual(newImageMode.enabledSkills, ["generate-image"], "New image mode should expose only the compatible generation skill");
+  await page.locator('[data-agent-input-mode="edit"]').click();
   await page.locator("[data-language='en']").click();
   await page.waitForFunction(() => document.querySelector("#agentPanel h2")?.textContent === "Image direction");
 
@@ -1225,7 +1235,7 @@ async function assertEditElementsLayerSelection(page, { backgroundId, foreground
   assert(selection.labelText === "", "Edit Elements unlocked selection should not show a group overlay label");
   assertDeepEqual(
     selection.visibleActions,
-    ["quick-edit", "remove-bg", "expand", "crop", "edit-elements", "reset-layer-group", "layer-down", "layer-up", "group-layer-group", "edit-text", "send-to-chat", "copy-file-mention", "download"],
+    ["quick-edit", "remove-bg", "expand", "crop", "edit-elements", "reset-layer-group", "layer-down", "layer-up", "group-layer-group", "edit-text", "copy-file-mention", "download"],
     "Edit Elements unlocked layer selection should expose image actions plus group actions"
   );
   assert(

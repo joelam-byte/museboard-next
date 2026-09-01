@@ -1,6 +1,6 @@
 {
   "name": "museboard",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Local infinite canvas plugin for Codex image workflows, built from Codex-Canvas.",
   "type": "module",
   "homepage": "https://github.com/joelam-byte/museboard-next",
@@ -18,7 +18,6 @@
     "INSTALL.md",
     "README.md",
     "README.en.md",
-    "README.ja.md",
     "SKILL.md",
     "LICENSE",
     "assets/icon.png",

@@ -1,10 +1,10 @@
 # Museboard
 
-[中文](README.md) | [English](README.en.md) | [日本語](README.ja.md)
+[中文](README.md) | [English](README.en.md)
 
 Museboard is an infinite canvas plugin for Codex. It requires no API setup and uses Codex's built-in GPT-image-2 workflow to edit images on a local canvas. It opens directly inside Codex, collects generated images into the current project, and lets you organize, annotate, edit, compare, and reuse visual assets.
 
-Museboard Next is based on MIT-licensed [Codex-Canvas v0.3.1](https://github.com/Xiangyu-CAS/codex-canvas/releases/tag/v0.3.1). See [`docs/UPSTREAM_BASELINE.md`](docs/UPSTREAM_BASELINE.md) for provenance and compatibility details.
+Museboard Next is based on MIT-licensed [Codex-Canvas v0.3.1](https://github.com/Xiangyu-CAS/codex-canvas/releases/tag/v0.3.1), and preserves its MIT license and provenance. Museboard adds persistent task canvases, Agent briefs, a Skill panel, History, Assets, and business image-generation workflows for a personal design process. See [`docs/UPSTREAM_BASELINE.md`](docs/UPSTREAM_BASELINE.md) for provenance and compatibility details.
 
 It brings a Lovart-like workflow to Codex: chat on one side, canvas on the other, with powerful image editing tools designed around the same creative loop.
 
@@ -17,13 +17,14 @@ It brings a Lovart-like workflow to Codex: chat on one side, canvas on the other
 Copy this prompt into Codex:
 
 ```text
-Please install Museboard according to https://github.com/joelam-byte/museboard-next.git and its INSTALL.md.
-After installation, tell the user to start a new Codex task and type `@Museboard open the canvas`.
+Install the Museboard local development build according to INSTALL.md in this project.
+Do not modify code, create commits, or push to GitHub.
+After installation, start a new Codex task and type `@Museboard open the canvas`.
 ```
 
 See the full installation guide in [`INSTALL.md`](INSTALL.md).
 
-Museboard does not have a stable Release yet. During development and prerelease, follow the PR #9 preview path in `INSTALL.md`; do not run `checkout:stable` or use the upstream provenance tag. Switch to the stable path after the first stable Release. **Settings → Version** only installs a `vX.Y.Z` release after its assets are complete and its manifest matches the tag, never unreleased commits from `main`. The old server exits after an update; reopen the canvas and start a new Codex task.
+Museboard does not have a stable Release yet. For personal testing, install the development/Alpha build from GitHub `main`; switch to the stable path after the official `v0.4.0` Release. **Settings → Version** only installs a complete, manifest-matched `vX.Y.Z` release, never unreleased commits from `main`. The old server exits after an update; reopen the canvas and start a new Codex task.
 
 After installation, start a new Codex task and open the canvas:
 
@@ -100,15 +101,18 @@ Expand provides a visual expansion frame and common aspect-ratio presets such as
 - Supports Edit Elements, separating images into foreground object/text layers and a background layer.
 - Supports background completion for Edit Elements and replaces the background layer in place.
 - Supports downloading Edit Elements layer groups as PSD files, with each canvas layer mapped to a Photoshop layer.
-- Supports prompt history and generated-version groups.
-- Keeps separate canvases for different Codex conversations to avoid mixing contexts.
+- Keeps one persistent canvas for each Codex conversation and restores it after reopening.
+- Supports a zero-reference New image mode as well as one to three reference images for edit analysis.
+- Uses an Agent to prepare a structured brief, recommend a Skill, and ask only result-significant clarifications; generation always needs explicit confirmation.
+- Supports a Skill panel, History, Assets, version relationships, and reinserting an asset after it has been removed from the canvas.
+- Includes Xiaohongshu Cover and Product Marketing Set Skills.
 - Supports copying a selected image as an `@file` reference and pasting it back into Codex chat.
 
 ## Usage Notes
 
 Museboard stores canvas data in the current project's `canvas/` directory. Generated assets, job logs, and intermediate files stay local to the project.
 
-`Send to chat` is currently a prototype path through the Codex app-server. It can submit at the protocol layer, but it may not always appear in the currently visible Codex desktop chat UI. The more reliable workflow is to use `Copy @file`, then paste that reference into the current Codex chat box.
+Copy to chat copies the selected image's `@file` reference. Paste it into the Codex chat box to use the image as a reference in a follow-up request.
 
 ## Development
 
@@ -126,6 +130,7 @@ Related docs:
 - [`docs/RELEASING.md`](docs/RELEASING.md): versioning, Release PR, tag, and artifact workflow.
 - [`docs/CANVAS_TO_CHAT.md`](docs/CANVAS_TO_CHAT.md): current canvas-to-chat validation results and limitations.
 
-## Credits
+## Provenance and credits
 
-Thanks to [Cowart](https://github.com/zhongerxin/Cowart) for the canvas concept.
+- Museboard Next is based on [Xiangyu-CAS/Codex-Canvas](https://github.com/Xiangyu-CAS/codex-canvas) v0.3.1 and preserves its MIT license and provenance.
+- Thanks to [Cowart](https://github.com/zhongerxin/Cowart) for the canvas interaction concept.

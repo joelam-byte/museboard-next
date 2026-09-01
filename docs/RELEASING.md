@@ -5,10 +5,11 @@ Release PR containing the next version and changelog. Merging that PR creates an
 immutable `vX.Y.Z` tag and GitHub Release, then the release workflow tests and
 uploads a platform-independent plugin package.
 
-The first public release is intentionally bootstrapped as `v0.2.0`. It must be
-newer than the legacy `0.1.1` installs so Codex creates a new versioned cache.
-After that first Release PR is merged, Release Please owns all subsequent
-versions.
+The first public Museboard release is intentionally `v0.4.0`. The repository
+started from Codex-Canvas v0.3.1, so `v0.4.0` creates a separate Museboard
+release line, stays newer than legacy `0.1.1` installs, and avoids reusing an
+upstream Codex-Canvas tag. After that first Release PR is merged, Release
+Please owns all subsequent versions.
 
 ## One-time repository setup
 

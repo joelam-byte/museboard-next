@@ -2,40 +2,71 @@
 
 仓库地址：https://github.com/joelam-byte/museboard-next.git
 
-Museboard Next 基于 MIT 许可的 Codex-Canvas v0.3.1。安装新版本时使用 Museboard 的仓库、CLI 和 plugin 名称；已有画布数据与 `CODEX_CANVAS_*` 环境变量仍保持兼容。
+Museboard 是为个人 Codex 工作流定制的本地插件。它基于 MIT 许可的 Codex-Canvas v0.3.1 开发，并保留原项目的 MIT 许可与来源说明；Museboard 在此基础上加入了长期任务画布、Agent 简报、Skill 面板、History、Assets 和业务图像生成能力。详情见 [`docs/UPSTREAM_BASELINE.md`](docs/UPSTREAM_BASELINE.md)。
 
-## 让 Codex 自动安装
+## 当前可安装版本：main 开发/Alpha 版
 
-可以把下面这段作为安装任务发给 Codex：
+当前尚未发布 Museboard stable Release。若要在自己的另一台电脑测试，请从 GitHub 的 `main` 分支安装。这是开发/Alpha 版：适合个人使用和验证，不是固定的正式发布包。
 
-```text
-请根据 https://github.com/joelam-byte/museboard-next.git 里的 INSTALL.md 安装 Museboard。
-安装完成后，新建一个 Codex 任务，再使用 @Museboard 打开画布。
-```
+### 推荐方式：GitHub Desktop + Codex
 
-当前还没有 Museboard stable GitHub Release。首次稳定版发布前，请从 PR #9 安装待合并的预览源码；首次稳定版发布后，普通用户改用 stable Release 流程。两种流程都会运行 personal marketplace 安装器，再由 Codex CLI 安装这个 personal plugin。不要直接从 `main` 安装，也不要把只用于记录上游来源的 `upstream-codex-canvas-v0.3.1` tag 当作 Museboard Release。
+1. 在目标电脑安装并登录 GitHub Desktop 与 Codex。
+2. GitHub Desktop 选择 **File → Clone repository → URL**，粘贴：
 
-## 手动安装
+   ```text
+   https://github.com/joelam-byte/museboard-next.git
+   ```
 
-### 当前开发/预发布阶段
+3. 选择一个普通本地目录完成 Clone，例如 `D:\Codex Projects\museboard`。
+4. 在 Codex 新建本地任务，并选择刚克隆的 `museboard` 文件夹。
+5. 将下面内容发送给 Codex：
 
-在 Museboard 首次 stable Release 发布前，从 PR #9 的 GitHub pull ref 安装待合并的预览源码。下面的命令在 Windows PowerShell、macOS 和 Linux 终端中都可逐行执行：
+   ```text
+   请在当前 Museboard 项目中安装本地开发版插件。
+
+   请依次完成：
+   1. 安装项目依赖。
+   2. 运行 npm run install:personal。
+   3. 运行 codex plugin add museboard@personal。
+
+   不要修改代码、不要创建提交、不要上传 GitHub。完成后告诉我安装结果。
+   ```
+
+6. 安装完成后，新建一个 Codex 任务，再输入：
+
+   ```text
+   @Museboard 打开画布
+   ```
+
+### 手动方式
+
+下面命令可在 Windows PowerShell、macOS 或 Linux 终端逐行执行：
 
 ```bash
 git clone https://github.com/joelam-byte/museboard-next.git museboard
 cd museboard
-git fetch origin pull/9/head
-git switch --create museboard-preview FETCH_HEAD
 npm ci
-npm run install:preview
+npm run install:personal
 codex plugin add museboard@personal
 ```
 
-`npm run install:preview` 只安装当前已检出的评审源码，不查询或伪造 stable Release。以后更新 PR #9 预览源码时，在干净的 `museboard-preview` 分支运行 `git fetch origin pull/9/head` 和 `git merge --ff-only FETCH_HEAD`，再重复 `npm ci`、`npm run install:preview` 和 `codex plugin add museboard@personal`。
+安装后必须新建一个 Codex 任务，让新版 Skills 和 MCP server 从新缓存加载。
 
-### 首次 stable Release 发布后
+### 更新开发/Alpha 版
 
-Museboard 发布首个非 prerelease 的 `vX.Y.Z` GitHub Release 后，普通用户使用以下流程：
+在 GitHub Desktop 对该仓库执行 **Fetch origin → Pull origin**。然后在该仓库目录重新执行：
+
+```bash
+npm ci
+npm run install:personal
+codex plugin add museboard@personal
+```
+
+最后关闭旧画布并新建 Codex 任务。仅刷新画布网页不能重载 Skills 和 MCP server。
+
+## 首次正式 Release 发布后
+
+首个正式 Museboard Release 将是 `v0.4.0`。当 GitHub 出现带有插件包、`release-manifest.json` 与 `SHA256SUMS` 的正式 Release 后，普通安装改用：
 
 ```bash
 git clone https://github.com/joelam-byte/museboard-next.git museboard
@@ -46,7 +77,7 @@ npm run install:personal
 codex plugin add museboard@personal
 ```
 
-`npm run checkout:stable` 只接受产物完整、manifest 与 tag 一致的 Museboard stable GitHub Release，并从对应的 `vX.Y.Z` tag 创建或更新本地 `museboard-stable` 分支。尚无 stable Release 时，它会按设计停止；工作树最终必须精确停在 Release commit，因此不会把 `main` 上尚未发布的提交安装给普通用户。
+`npm run checkout:stable` 只接受 Museboard 自己的、产物完整且 manifest 与 tag 一致的正式 Release。不要使用上游 Codex-Canvas 的 `v0.3.1` tag，也不要把上游来源 tag 当成 Museboard Release。
 
 `npm run install:personal` 会创建或更新 `~/plugins/museboard`，并把 Museboard 条目写入 `~/.agents/plugins/marketplace.json`。它还会 best-effort 安装 `rapidocr_onnxruntime`，用于 Edit Text 本地 OCR；失败时 plugin 仍会完成安装，并回退到 Codex 视觉识别。
 
@@ -66,7 +97,7 @@ npm run install:personal -- --skip-ocr
 
 ## 更新
 
-Museboard 的稳定更新以 `vX.Y.Z` Git tag 和产物完整的 GitHub Release 为边界。Settings 会确认 Release 同时包含 plugin 包、`release-manifest.json` 和 `SHA256SUMS`，并验证 manifest commit 与 tag 一致。
+Museboard 的稳定更新以 `vX.Y.Z` Git tag 和产物完整的 GitHub Release 为边界。Settings 会确认 Release 同时包含插件包、`release-manifest.json` 和 `SHA256SUMS`，并验证 manifest commit 与 tag 一致。
 
 - 打开画布时只检查新 Release，不会静默修改本地代码。
 - **Settings → Version** 会安全 fast-forward 到最新稳定 tag、安装锁定依赖，并重新执行 `codex plugin add museboard@personal`。

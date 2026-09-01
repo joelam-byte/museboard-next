@@ -1,10 +1,10 @@
 # Museboard
 
-[中文](README.md) | [English](README.en.md) | [日本語](README.ja.md)
+[中文](README.md) | [English](README.en.md)
 
 Museboard 是一个面向 Codex 的无限画布 Plugin，无需配置 API，调用 Codex 内置 GPT-image-2 实现画布编辑功能。它可以在 Codex 里打开画布，把生成的图片收录到当前项目中，并让你继续整理、标注、编辑、比较这些视觉资产。
 
-Museboard Next 基于 MIT 许可的 [Codex-Canvas v0.3.1](https://github.com/Xiangyu-CAS/codex-canvas/releases/tag/v0.3.1) 建立；基线与后续差异见 [`docs/UPSTREAM_BASELINE.md`](docs/UPSTREAM_BASELINE.md)。
+Museboard Next 基于 MIT 许可的 [Codex-Canvas v0.3.1](https://github.com/Xiangyu-CAS/codex-canvas/releases/tag/v0.3.1) 建立，并保留其 MIT 许可与来源说明。Museboard 按个人设计工作流加入了长期任务画布、Agent 简报、Skill 面板、History、Assets 和业务图像生成能力；基线与后续差异见 [`docs/UPSTREAM_BASELINE.md`](docs/UPSTREAM_BASELINE.md)。
 
 这个插件把 Codex 变成更接近 Lovart 的工作形态：一边对话，一边画布，并参照 Lovart 画布提供许多强大的编辑功能。
 
@@ -17,13 +17,14 @@ Museboard Next 基于 MIT 许可的 [Codex-Canvas v0.3.1](https://github.com/Xia
 把下面这段复制给 Codex：
 
 ```text
-请根据 https://github.com/joelam-byte/museboard-next.git 里的 INSTALL.md 安装 Museboard。
-安装完成后，提示用户新建 Codex 任务，再输入：`@Museboard 打开画布` 来启动
+请根据当前项目的 INSTALL.md 安装 Museboard 本地开发版。
+不要修改代码、不要创建提交、不要上传 GitHub。
+安装完成后，新建 Codex 任务，再输入：`@Museboard 打开画布`。
 ```
 
 完整安装说明见 [`INSTALL.md`](INSTALL.md)。
 
-当前尚无 Museboard stable Release；开发/预发布安装请使用 `INSTALL.md` 中基于 PR #9 的预览流程，不要运行 `checkout:stable`，也不要使用上游来源 tag。首次稳定版发布后改用 stable 流程。画布中的 **Settings → Version** 只安装产物完整、manifest 与 tag 一致的 `vX.Y.Z`，不会跟随 `main` 上的未发布提交。更新后旧 server 会退出，需要重新打开画布并新建 Codex 任务。
+当前尚无 Museboard stable Release。个人测试请从 GitHub `main` 安装开发/Alpha 版；正式 `v0.4.0` Release 发布后再改用稳定安装流程。画布中的 **Settings → Version** 只安装产物完整、manifest 与 tag 一致的正式 `vX.Y.Z`，不会跟随 `main` 上的未发布提交。更新后旧 server 会退出，需要重新打开画布并新建 Codex 任务。
 
 安装完成后，新建一个 Codex 任务并打开画布：
 
@@ -106,15 +107,18 @@ Expand 支持可视化扩图框和常用比例预设，例如 1:1、3:4、16:9�
 - 支持 Edit Elements，把图片拆成前景物体/文字图层和背景图层。
 - 支持后台补全 Edit Elements 背景，并原位替换背景层。
 - 支持将 Edit Elements 图层组下载为 PSD，每个画布图层对应一个 Photoshop 图层。
-- 支持查看 prompt 历史和生成版本分组。
-- 不同 Codex 对话可以使用不同画布，避免上下文混在一起。
+- 每个 Codex 对话对应一张长期画布，关闭后重新打开可恢复原有状态。
+- 支持不选参考图的“新建图片”模式，也支持一至三张参考图的改图分析。
+- Agent 会生成结构化简报、推荐 Skill，并只在确实影响结果时提出澄清问题；生成前必须确认。
+- 支持 Skill 面板、History、Assets、版本关系和移出画布后重新插入资产。
+- 支持小红书封面与产品营销组图 Skill。
 - 支持复制选中图片的 `@file` 引用，粘贴到 Codex 聊天框中继续使用。
 
 ## 使用说明
 
 Museboard 会把画布数据保存在当前项目的 `canvas/` 目录下。生成资产、任务日志和中间文件都会留在本地项目中。
 
-`Send to chat` 目前还是通过 Codex app-server 提交的原型路径。它可以在协议层完成，但不保证一定出现在当前可见的 Codex 桌面端聊天 UI 中。更可靠的方式是使用 `Copy @file`，然后把引用粘贴到当前 Codex 聊天框。
+画布中的“复制到对话”会复制图片的 `@file` 引用。回到 Codex 聊天框粘贴即可把图片作为后续需求的参考图。
 
 ## 开发
 
@@ -132,6 +136,7 @@ node ./bin/museboard.mjs open --project .
 - [`docs/RELEASING.md`](docs/RELEASING.md)：版本号、Release PR、tag 和发布产物流程。
 - [`docs/CANVAS_TO_CHAT.md`](docs/CANVAS_TO_CHAT.md)：当前 canvas-to-chat 的验证结果和限制。
 
-## 致谢
+## 来源与致谢
 
-感谢 [Cowart](https://github.com/zhongerxin/Cowart) 提供的画布思路
+- Museboard Next 基于 [Xiangyu-CAS/Codex-Canvas](https://github.com/Xiangyu-CAS/codex-canvas) v0.3.1，遵循并保留 MIT 许可与来源说明。
+- 感谢 [Cowart](https://github.com/zhongerxin/Cowart) 提供的画布交互思路。
